@@ -13,9 +13,20 @@ import java.nio.charset.StandardCharsets;
 
 public class OpenAiClient {
     private static final String ENDPOINT = "https://api.openai.com/v1/responses";
-    private static final String MODEL = "gpt-5.1-mini";
+    private static final String[] MODELS = new String[] {"gpt-5.4-mini", "gpt-5.4-nano"};
 
     public static String ask(String token, String prompt) throws Exception {
+        String lastError = "";
+        for (String model : MODELS) {
+            ApiResult result = askWithModel(token, prompt, model);
+            if (result.ok) return result.text;
+            lastError = result.text;
+            if (!isModelError(result.text)) return result.text;
+        }
+        return lastError.isEmpty() ? "Error: no se pudo consultar GPT." : lastError;
+    }
+
+    private static ApiResult askWithModel(String token, String prompt, String model) throws Exception {
         URL url = new URL(ENDPOINT);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
@@ -26,7 +37,7 @@ public class OpenAiClient {
         conn.setRequestProperty("Content-Type", "application/json; charset=utf-8");
 
         JSONObject body = new JSONObject();
-        body.put("model", MODEL);
+        body.put("model", model);
         body.put("input", prompt);
         body.put("instructions", "Responde en español, claro y directo. Si falta contexto, dilo sin inventar.");
         body.put("max_output_tokens", 700);
@@ -42,8 +53,14 @@ public class OpenAiClient {
         String raw = readStream(stream);
         conn.disconnect();
 
-        if (code < 200 || code >= 300) return parseError(raw, code);
-        return parseText(raw);
+        if (code < 200 || code >= 300) return new ApiResult(false, parseError(raw, code));
+        return new ApiResult(true, parseText(raw));
+    }
+
+    private static boolean isModelError(String text) {
+        if (text == null) return false;
+        String lower = text.toLowerCase();
+        return lower.contains("model") && (lower.contains("does not exist") || lower.contains("not found") || lower.contains("invalid"));
     }
 
     private static String readStream(InputStream stream) throws Exception {
@@ -95,5 +112,15 @@ public class OpenAiClient {
 
         String parsed = out.toString().trim();
         return parsed.isEmpty() ? raw : parsed;
+    }
+
+    private static class ApiResult {
+        final boolean ok;
+        final String text;
+
+        ApiResult(boolean ok, String text) {
+            this.ok = ok;
+            this.text = text;
+        }
     }
 }
