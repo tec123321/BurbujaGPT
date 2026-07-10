@@ -1,13 +1,15 @@
 <resources>
-    <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:colorAccent">#2563EB</item>
-        <item name="android:navigationBarColor">#F4F4F5</item>
-        <item name="android:statusBarColor">#F4F4F5</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:colorAccent">#60A5FA</item>
+        <item name="android:navigationBarColor">#09090B</item>
+        <item name="android:statusBarColor">#09090B</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:forceDarkAllowed">true</item>
     </style>
 
-    <style name="FloatingChatTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+    <style name="FloatingChatTheme" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowIsFloating">true</item>
@@ -15,6 +17,8 @@
         <item name="android:windowBackground">@android:color/transparent</item>
         <item name="android:backgroundDimEnabled">false</item>
         <item name="android:windowCloseOnTouchOutside">false</item>
-        <item name="android:colorAccent">#2563EB</item>
+        <item name="android:colorAccent">#60A5FA</item>
+        <item name="android:navigationBarColor">#09090B</item>
+        <item name="android:forceDarkAllowed">true</item>
     </style>
 </resources>

@@ -11,6 +11,7 @@
     </queries>
 
     <application
+        android:name=".BurbujaGptApp"
         android:allowBackup="false"
         android:icon="@drawable/ic_bubble"
         android:label="@string/app_name"
@@ -35,6 +36,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:resizeableActivity="true"
+            android:taskAffinity="com.leonardo.burbujagpt.chat"
             android:theme="@style/FloatingChatTheme" />
 
         <service

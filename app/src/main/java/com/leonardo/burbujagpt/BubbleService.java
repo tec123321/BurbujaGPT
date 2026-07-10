@@ -268,6 +268,15 @@ public class BubbleService extends Service {
     }
 
     private void openSelectedMode() {
+        if (ChatActivity.isVisible) {
+            Intent minimize = new Intent(this, ChatActivity.class);
+            minimize.putExtra(ChatActivity.EXTRA_MINIMIZE, true);
+            minimize.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(minimize);
+            return;
+        }
+
+        MainActivity.sendVisibleTaskToBack();
         String mode = AppPreferences.getMode(this);
         if (AppPreferences.MODE_OFFICIAL.equals(mode)
                 && OfficialChatLauncher.openOfficialApp(this, true)) {

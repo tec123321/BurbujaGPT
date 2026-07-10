@@ -28,9 +28,18 @@ import android.widget.Toast;
 
 public class MainActivity extends Activity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1002;
+    private static final int COLOR_BACKGROUND = 0xFF09090B;
+    private static final int COLOR_CARD = 0xFF18181B;
+    private static final int COLOR_TEXT = 0xFFF4F4F5;
+    private static final int COLOR_MUTED = 0xFFA1A1AA;
+    private static final int COLOR_SUBTLE = 0xFFD4D4D8;
+    private static final int COLOR_BORDER = 0xFF3F3F46;
+    private static final int COLOR_BUTTON = 0xFF27272A;
+    private static final int COLOR_PRIMARY = 0xFF2563EB;
 
     private TextView statusView;
     private Button permissionButton;
+    private static volatile MainActivity visibleInstance;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,13 +50,27 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        visibleInstance = this;
         updateStatus();
+    }
+
+    @Override
+    protected void onPause() {
+        if (visibleInstance == this) visibleInstance = null;
+        super.onPause();
+    }
+
+    static void sendVisibleTaskToBack() {
+        MainActivity activity = visibleInstance;
+        if (activity != null && !activity.isFinishing()) {
+            activity.runOnUiThread(() -> activity.moveTaskToBack(true));
+        }
     }
 
     private View buildUi() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(0xFFF4F4F5);
+        scroll.setBackgroundColor(COLOR_BACKGROUND);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -72,7 +95,7 @@ public class MainActivity extends Activity {
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = makeText("BurbujaGPT V4", 28, 0xFF111827, true);
+        TextView title = makeText("BurbujaGPT V5", 28, COLOR_TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(13), 0, 0);
@@ -81,7 +104,7 @@ public class MainActivity extends Activity {
         TextView subtitle = makeText(
                 "Globo configurable con tus chats reales de ChatGPT",
                 16,
-                0xFF4B5563,
+                COLOR_MUTED,
                 false
         );
         subtitle.setGravity(Gravity.CENTER);
@@ -93,13 +116,13 @@ public class MainActivity extends Activity {
         infoCard.addView(makeText(
                 "No usa la API. Para cuentas iniciadas con Google, usa la app oficial o el navegador emergente. El panel web admite correo y contraseña, pero Google bloquea el acceso incrustado.",
                 14,
-                0xFF1F2937,
+                COLOR_TEXT,
                 false
         ), matchWrap());
         TextView gestureHelp = makeText(
                 "Toca: abrir · Mantén pulsado: ajustes · Arrastra: mover · Arrastra hacia ×: apagar",
                 12,
-                0xFF6B7280,
+                COLOR_MUTED,
                 false
         );
         LinearLayout.LayoutParams gestureParams = matchWrap();
@@ -108,7 +131,7 @@ public class MainActivity extends Activity {
         root.addView(infoCard, cardParams());
 
         LinearLayout modeCard = makeCard();
-        modeCard.addView(makeText("Al tocar el globo", 17, 0xFF111827, true), matchWrap());
+        modeCard.addView(makeText("Al tocar el globo", 17, COLOR_TEXT, true), matchWrap());
 
         RadioGroup modeGroup = new RadioGroup(this);
         modeGroup.setOrientation(RadioGroup.VERTICAL);
@@ -163,12 +186,12 @@ public class MainActivity extends Activity {
         root.addView(modeCard, cardParams());
 
         LinearLayout appearanceCard = makeCard();
-        appearanceCard.addView(makeText("Aspecto del globo", 17, 0xFF111827, true), matchWrap());
+        appearanceCard.addView(makeText("Aspecto del globo", 17, COLOR_TEXT, true), matchWrap());
 
         TextView sizeLabel = makeText(
                 "Tamaño: " + AppPreferences.getBubbleSize(this) + " dp",
                 13,
-                0xFF374151,
+                COLOR_SUBTLE,
                 false
         );
         appearanceCard.addView(sizeLabel, labelParams());
@@ -191,7 +214,7 @@ public class MainActivity extends Activity {
         TextView opacityLabel = makeText(
                 "Opacidad: " + AppPreferences.getBubbleOpacity(this) + "%",
                 13,
-                0xFF374151,
+                COLOR_SUBTLE,
                 false
         );
         appearanceCard.addView(opacityLabel, labelParams());
@@ -211,7 +234,7 @@ public class MainActivity extends Activity {
         });
         appearanceCard.addView(opacitySeek, matchWrap());
 
-        appearanceCard.addView(makeText("Tamaño inicial del panel", 13, 0xFF374151, false), labelParams());
+        appearanceCard.addView(makeText("Tamaño inicial del panel", 13, COLOR_SUBTLE, false), labelParams());
         RadioGroup panelGroup = new RadioGroup(this);
         panelGroup.setOrientation(RadioGroup.HORIZONTAL);
         int currentPanelSize = AppPreferences.getPanelSize(this);
@@ -233,7 +256,7 @@ public class MainActivity extends Activity {
         appearanceCard.addView(panelGroup, matchWrap());
         root.addView(appearanceCard, cardParams());
 
-        statusView = makeText("", 14, 0xFF374151, true);
+        statusView = makeText("", 14, COLOR_SUBTLE, true);
         LinearLayout.LayoutParams statusParams = matchWrap();
         statusParams.setMargins(0, dp(8), 0, dp(8));
         root.addView(statusView, statusParams);
@@ -247,7 +270,7 @@ public class MainActivity extends Activity {
         TextView footer = makeText(
                 "El modo oficial emergente depende de que One UI acepte los límites de ventana solicitados. Si los ignora, ChatGPT se abrirá en pantalla completa.",
                 12,
-                0xFF6B7280,
+                COLOR_MUTED,
                 false
         );
         footer.setGravity(Gravity.CENTER);
@@ -269,14 +292,14 @@ public class MainActivity extends Activity {
         if (statusView != null) {
             if (!overlayGranted) {
                 statusView.setText("Estado: falta permitir Aparecer encima");
-                statusView.setTextColor(0xFFB45309);
+                statusView.setTextColor(0xFFFBBF24);
             } else {
                 statusView.setText(
                         "Estado: permiso concedido · Globo "
                                 + (BubbleService.isRunning ? "activo" : "apagado")
                                 + " · Modo " + mode
                 );
-                statusView.setTextColor(BubbleService.isRunning ? 0xFF047857 : 0xFF374151);
+                statusView.setTextColor(BubbleService.isRunning ? 0xFF34D399 : COLOR_SUBTLE);
             }
         }
         if (permissionButton != null) {
@@ -311,6 +334,7 @@ public class MainActivity extends Activity {
         else startService(service);
         Toast.makeText(this, "Globo activado", Toast.LENGTH_SHORT).show();
         statusView.postDelayed(this::updateStatus, 250);
+        statusView.postDelayed(() -> moveTaskToBack(true), 450);
     }
 
     private void stopBubble() {
@@ -338,16 +362,21 @@ public class MainActivity extends Activity {
     }
 
     private void openFloatingChat() {
-        startActivity(new Intent(this, ChatActivity.class));
+        moveTaskToBack(true);
+        Intent intent = new Intent(this, ChatActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        getApplicationContext().startActivity(intent);
     }
 
     private void testOfficialFloatingMode() {
+        moveTaskToBack(true);
         if (!OfficialChatLauncher.openOfficialApp(this, true)) {
             Toast.makeText(this, "La app oficial de ChatGPT no está instalada", Toast.LENGTH_LONG).show();
         }
     }
 
     private void testBrowserFloatingMode() {
+        moveTaskToBack(true);
         if (!OfficialChatLauncher.openBrowser(this, "https://chatgpt.com/", true)) {
             Toast.makeText(this, "No hay un navegador disponible", Toast.LENGTH_LONG).show();
         }
@@ -376,9 +405,9 @@ public class MainActivity extends Activity {
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(15), dp(13), dp(15), dp(13));
         GradientDrawable background = new GradientDrawable();
-        background.setColor(Color.WHITE);
+        background.setColor(COLOR_CARD);
         background.setCornerRadius(dp(16));
-        background.setStroke(dp(1), 0x1A111827);
+        background.setStroke(dp(1), COLOR_BORDER);
         card.setBackground(background);
         return card;
     }
@@ -397,7 +426,7 @@ public class MainActivity extends Activity {
         RadioButton radio = new RadioButton(this);
         radio.setText(text);
         radio.setTextSize(13);
-        radio.setTextColor(0xFF1F2937);
+        radio.setTextColor(COLOR_TEXT);
         radio.setChecked(checked);
         radio.setPadding(0, dp(3), 0, dp(3));
         return radio;
@@ -407,16 +436,16 @@ public class MainActivity extends Activity {
         Button button = new Button(this);
         button.setText(text);
         button.setTextSize(14);
-        button.setTextColor(primary ? Color.WHITE : 0xFF111827);
+        button.setTextColor(primary ? Color.WHITE : COLOR_TEXT);
         button.setAllCaps(false);
         button.setGravity(Gravity.CENTER);
         button.setPadding(dp(12), 0, dp(12), 0);
         button.setOnClickListener(listener);
 
         GradientDrawable background = new GradientDrawable();
-        background.setColor(primary ? 0xFF2563EB : 0xFFF9FAFB);
+        background.setColor(primary ? COLOR_PRIMARY : COLOR_BUTTON);
         background.setCornerRadius(dp(13));
-        background.setStroke(dp(1), primary ? 0xFF2563EB : 0x22111827);
+        background.setStroke(dp(1), primary ? COLOR_PRIMARY : COLOR_BORDER);
         button.setBackground(background);
         return button;
     }

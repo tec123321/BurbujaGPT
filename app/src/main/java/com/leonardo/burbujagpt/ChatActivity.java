@@ -47,12 +47,23 @@ import java.util.Locale;
 /** Ventana flotante que muestra el sitio oficial de ChatGPT. */
 public class ChatActivity extends Activity {
     static final String EXTRA_URL = "chat_url";
+    static final String EXTRA_MINIMIZE = "minimize_chat";
+    static volatile boolean isVisible;
 
     private static final String CHATGPT_URL = "https://chatgpt.com/";
     private static final String WEB_PREFS = "chat_web_state";
     private static final String KEY_LAST_URL = "last_chat_url";
+    private static final String WINDOW_PREFS = "chat_window_geometry";
+    private static final String KEY_CUSTOM_SIZE = "custom_size";
+    private static final String KEY_WINDOW_WIDTH = "width";
+    private static final String KEY_WINDOW_HEIGHT = "height";
+    private static final String KEY_WINDOW_X = "x";
+    private static final String KEY_WINDOW_Y = "y";
     private static final int FILE_CHOOSER_REQUEST = 4001;
     private static final int MICROPHONE_REQUEST = 4002;
+    private static final int COLOR_PANEL = 0xFF18181B;
+    private static final int COLOR_HEADER = 0xFF09090B;
+    private static final int COLOR_WEB_BACKGROUND = 0xFF212121;
 
     private WebView webView;
     private ProgressBar progressBar;
@@ -63,6 +74,7 @@ public class ChatActivity extends Activity {
     private PermissionRequest pendingPermissionRequest;
     private int panelSize;
     private boolean loginDialogShowing;
+    private boolean customSize;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -74,6 +86,8 @@ public class ChatActivity extends Activity {
         window.setGravity(Gravity.CENTER);
 
         panelSize = AppPreferences.getPanelSize(this);
+        customSize = getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE)
+                .getBoolean(KEY_CUSTOM_SIZE, false);
         setContentView(buildUi());
         applyWindowSize();
         configureWebView();
@@ -92,27 +106,35 @@ public class ChatActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (intent.getBooleanExtra(EXTRA_MINIMIZE, false)) {
+            getWindow().getDecorView().post(this::minimizeChat);
+            return;
+        }
         String requestedUrl = intent.getStringExtra(EXTRA_URL);
         if (webView != null && isSafeChatGptUrl(requestedUrl)) webView.loadUrl(requestedUrl);
     }
 
     private View buildUi() {
+        FrameLayout shell = new FrameLayout(this);
+        shell.setClipChildren(false);
+        shell.setClipToPadding(false);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setClipToOutline(true);
 
         GradientDrawable background = new GradientDrawable();
-        background.setColor(0xFFF7F7F8);
-        background.setCornerRadius(dp(18));
-        background.setStroke(dp(1), 0x33000000);
+        background.setColor(COLOR_PANEL);
+        background.setCornerRadius(dp(22));
+        background.setStroke(dp(1), 0xFF3F3F46);
         root.setBackground(background);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) root.setElevation(dp(18));
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(5), dp(4), dp(5), dp(4));
-        header.setBackgroundColor(0xFF202123);
+        header.setPadding(dp(4), dp(1), dp(4), dp(1));
+        header.setBackgroundColor(COLOR_HEADER);
 
         header.addView(makeHeaderButton("‹", "Atrás", v -> goBack()), squareParams());
         header.addView(makeHeaderButton("+", "Chat nuevo", v -> webView.loadUrl(CHATGPT_URL)), squareParams());
@@ -120,15 +142,15 @@ public class ChatActivity extends Activity {
         titleView = new TextView(this);
         titleView.setText("ChatGPT");
         titleView.setTextColor(Color.WHITE);
-        titleView.setTextSize(15);
+        titleView.setTextSize(13);
         titleView.setGravity(Gravity.CENTER);
         titleView.setSingleLine(true);
         titleView.setContentDescription("Arrastra para mover la ventana");
         titleView.setOnTouchListener(new WindowDragListener());
-        header.addView(titleView, new LinearLayout.LayoutParams(0, dp(44), 1));
+        header.addView(titleView, new LinearLayout.LayoutParams(0, dp(38), 1));
 
         header.addView(makeHeaderButton("□", "Cambiar tamaño", v -> cycleWindowSize()), squareParams());
-        header.addView(makeHeaderButton("—", "Minimizar", v -> finish()), squareParams());
+        header.addView(makeHeaderButton("—", "Minimizar", v -> minimizeChat()), squareParams());
 
         Button menuButton = makeHeaderButton("⋮", "Más opciones", null);
         menuButton.setOnClickListener(v -> showMoreMenu(menuButton));
@@ -149,11 +171,11 @@ public class ChatActivity extends Activity {
         errorBar = new LinearLayout(this);
         errorBar.setOrientation(LinearLayout.VERTICAL);
         errorBar.setPadding(dp(12), dp(9), dp(12), dp(9));
-        errorBar.setBackgroundColor(0xFFFFE4E6);
+        errorBar.setBackgroundColor(0xFF3F1118);
         errorBar.setVisibility(View.GONE);
 
         errorText = new TextView(this);
-        errorText.setTextColor(0xFF881337);
+        errorText.setTextColor(0xFFFDA4AF);
         errorText.setTextSize(13);
         errorBar.addView(errorText, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -176,9 +198,9 @@ public class ChatActivity extends Activity {
         ));
 
         FrameLayout webContainer = new FrameLayout(this);
-        webContainer.setBackgroundColor(0xFFF7F7F8);
+        webContainer.setBackgroundColor(COLOR_WEB_BACKGROUND);
         webView = new WebView(this);
-        webView.setBackgroundColor(0xFFF7F7F8);
+        webView.setBackgroundColor(COLOR_WEB_BACKGROUND);
         webContainer.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -189,7 +211,27 @@ public class ChatActivity extends Activity {
                 1
         ));
 
-        return root;
+        shell.addView(root, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+
+        TextView resizeHandle = new TextView(this);
+        resizeHandle.setText("◢");
+        resizeHandle.setTextColor(0xFFB4B4BE);
+        resizeHandle.setTextSize(17);
+        resizeHandle.setGravity(Gravity.CENTER);
+        resizeHandle.setContentDescription("Arrastra para cambiar el tamaño");
+        resizeHandle.setOnTouchListener(new WindowResizeListener());
+        FrameLayout.LayoutParams resizeParams = new FrameLayout.LayoutParams(
+                dp(30),
+                dp(30),
+                Gravity.BOTTOM | Gravity.END
+        );
+        resizeParams.setMargins(0, 0, dp(2), dp(2));
+        shell.addView(resizeHandle, resizeParams);
+
+        return shell;
     }
 
     private void configureWebView() {
@@ -214,6 +256,9 @@ public class ChatActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             settings.setSafeBrowsingEnabled(true);
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            settings.setForceDark(WebSettings.FORCE_DARK_ON);
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             WebView.setWebContentsDebuggingEnabled(false);
         }
@@ -232,7 +277,7 @@ public class ChatActivity extends Activity {
     private Button makeHeaderButton(String text, String description, View.OnClickListener listener) {
         Button button = new Button(this);
         button.setText(text);
-        button.setTextSize(20);
+        button.setTextSize(18);
         button.setTextColor(Color.WHITE);
         button.setAllCaps(false);
         button.setPadding(0, 0, 0, 0);
@@ -255,7 +300,7 @@ public class ChatActivity extends Activity {
     }
 
     private LinearLayout.LayoutParams squareParams() {
-        return new LinearLayout.LayoutParams(dp(42), dp(44));
+        return new LinearLayout.LayoutParams(dp(36), dp(38));
     }
 
     private void showMoreMenu(View anchor) {
@@ -291,12 +336,34 @@ public class ChatActivity extends Activity {
 
     private void goBack() {
         if (webView != null && webView.canGoBack()) webView.goBack();
-        else finish();
+        else minimizeChat();
+    }
+
+    private void minimizeChat() {
+        View decor = getWindow().getDecorView();
+        decor.animate().cancel();
+        decor.animate()
+                .alpha(0f)
+                .scaleX(0.84f)
+                .scaleY(0.84f)
+                .setDuration(140)
+                .withEndAction(() -> {
+                    if (!moveTaskToBack(true)) finish();
+                    decor.setAlpha(1f);
+                    decor.setScaleX(1f);
+                    decor.setScaleY(1f);
+                })
+                .start();
     }
 
     private void cycleWindowSize() {
         panelSize = (panelSize + 1) % 3;
         AppPreferences.setPanelSize(this, panelSize);
+        customSize = false;
+        getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_CUSTOM_SIZE, false)
+                .apply();
         applyWindowSize();
     }
 
@@ -306,7 +373,20 @@ public class ChatActivity extends Activity {
         int width;
         int height;
 
-        if (panelSize == AppPreferences.PANEL_COMPACT) {
+        if (customSize && panelSize != AppPreferences.PANEL_FULL) {
+            width = clamp(
+                    getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE)
+                            .getInt(KEY_WINDOW_WIDTH, dp(360)),
+                    dp(280),
+                    screenWidth - dp(8)
+            );
+            height = clamp(
+                    getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE)
+                            .getInt(KEY_WINDOW_HEIGHT, dp(560)),
+                    dp(390),
+                    screenHeight - dp(56)
+            );
+        } else if (panelSize == AppPreferences.PANEL_COMPACT) {
             width = Math.min(screenWidth - dp(24), dp(420));
             height = (int) (screenHeight * 0.70f);
         } else if (panelSize == AppPreferences.PANEL_FULL) {
@@ -319,12 +399,43 @@ public class ChatActivity extends Activity {
 
         getWindow().setLayout(width, height);
         getWindow().setGravity(Gravity.CENTER);
+        WindowManager.LayoutParams attributes = getWindow().getAttributes();
         if (panelSize == AppPreferences.PANEL_FULL) {
-            WindowManager.LayoutParams attributes = getWindow().getAttributes();
             attributes.x = 0;
             attributes.y = 0;
-            getWindow().setAttributes(attributes);
+        } else {
+            int maxX = Math.max(0, (screenWidth - width) / 2);
+            int maxY = Math.max(0, (screenHeight - height) / 2);
+            attributes.x = clamp(
+                    getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE).getInt(KEY_WINDOW_X, 0),
+                    -maxX,
+                    maxX
+            );
+            attributes.y = clamp(
+                    getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE).getInt(KEY_WINDOW_Y, 0),
+                    -maxY,
+                    maxY
+            );
         }
+        getWindow().setAttributes(attributes);
+    }
+
+    private void saveWindowGeometry() {
+        View decor = getWindow().getDecorView();
+        WindowManager.LayoutParams attributes = getWindow().getAttributes();
+        if (decor.getWidth() <= 0 || decor.getHeight() <= 0) return;
+        getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_CUSTOM_SIZE, customSize)
+                .putInt(KEY_WINDOW_WIDTH, decor.getWidth())
+                .putInt(KEY_WINDOW_HEIGHT, decor.getHeight())
+                .putInt(KEY_WINDOW_X, attributes.x)
+                .putInt(KEY_WINDOW_Y, attributes.y)
+                .apply();
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(value, max));
     }
 
     private void openOfficialApp() {
@@ -503,6 +614,7 @@ public class ChatActivity extends Activity {
 
     @Override
     protected void onPause() {
+        isVisible = false;
         CookieManager.getInstance().flush();
         if (webView != null) webView.onPause();
         super.onPause();
@@ -511,11 +623,17 @@ public class ChatActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        isVisible = true;
+        View decor = getWindow().getDecorView();
+        decor.setAlpha(1f);
+        decor.setScaleX(1f);
+        decor.setScaleY(1f);
         if (webView != null) webView.onResume();
     }
 
     @Override
     protected void onDestroy() {
+        isVisible = false;
         if (fileCallback != null) {
             fileCallback.onReceiveValue(null);
             fileCallback = null;
@@ -562,9 +680,65 @@ public class ChatActivity extends Activity {
                     initialTouchY = event.getRawY();
                     return true;
                 case MotionEvent.ACTION_MOVE:
-                    attributes.x = initialX + (int) (event.getRawX() - initialTouchX);
-                    attributes.y = initialY + (int) (event.getRawY() - initialTouchY);
+                    int screenWidth = getResources().getDisplayMetrics().widthPixels;
+                    int screenHeight = getResources().getDisplayMetrics().heightPixels;
+                    int maxX = Math.max(0, (screenWidth - getWindow().getDecorView().getWidth()) / 2);
+                    int maxY = Math.max(0, (screenHeight - getWindow().getDecorView().getHeight()) / 2);
+                    attributes.x = clamp(
+                            initialX + (int) (event.getRawX() - initialTouchX),
+                            -maxX,
+                            maxX
+                    );
+                    attributes.y = clamp(
+                            initialY + (int) (event.getRawY() - initialTouchY),
+                            -maxY,
+                            maxY
+                    );
                     getWindow().setAttributes(attributes);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    saveWindowGeometry();
+                    return true;
+                default:
+                    return false;
+            }
+        }
+    }
+
+    private class WindowResizeListener implements View.OnTouchListener {
+        private int initialWidth;
+        private int initialHeight;
+        private float initialTouchX;
+        private float initialTouchY;
+
+        @Override
+        public boolean onTouch(View view, MotionEvent event) {
+            if (panelSize == AppPreferences.PANEL_FULL) return false;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    initialWidth = getWindow().getDecorView().getWidth();
+                    initialHeight = getWindow().getDecorView().getHeight();
+                    initialTouchX = event.getRawX();
+                    initialTouchY = event.getRawY();
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    int width = clamp(
+                            initialWidth + (int) (event.getRawX() - initialTouchX),
+                            dp(280),
+                            getResources().getDisplayMetrics().widthPixels - dp(8)
+                    );
+                    int height = clamp(
+                            initialHeight + (int) (event.getRawY() - initialTouchY),
+                            dp(390),
+                            getResources().getDisplayMetrics().heightPixels - dp(56)
+                    );
+                    customSize = true;
+                    getWindow().setLayout(width, height);
+                    return true;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    saveWindowGeometry();
                     return true;
                 default:
                     return false;
@@ -613,8 +787,7 @@ public class ChatActivity extends Activity {
                         .putString(KEY_LAST_URL, url)
                         .apply();
             }
-            String pageTitle = view.getTitle();
-            titleView.setText(pageTitle == null || pageTitle.trim().isEmpty() ? "ChatGPT" : pageTitle);
+            titleView.setText("ChatGPT");
             super.onPageFinished(view, url);
         }
 
