@@ -2,6 +2,7 @@ package com.leonardo.burbujagpt;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -14,9 +15,14 @@ import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.CookieManager;
+import android.webkit.WebStorage;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -45,7 +51,7 @@ public class MainActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(22), dp(28), dp(22), dp(30));
+        root.setPadding(dp(20), dp(26), dp(20), dp(30));
         scroll.addView(root, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -58,7 +64,7 @@ public class MainActivity extends Activity {
         orb.setGravity(Gravity.CENTER);
         GradientDrawable orbBackground = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF5B5CE2, 0xFF0EA5E9, 0xFF10B981}
+                new int[]{0xFF7C3AED, 0xFF0EA5E9, 0xFF10B981}
         );
         orbBackground.setShape(GradientDrawable.OVAL);
         orb.setBackground(orbBackground);
@@ -66,75 +72,187 @@ public class MainActivity extends Activity {
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = makeText("BurbujaGPT V3", 28, 0xFF111827, true);
+        TextView title = makeText("BurbujaGPT V4", 28, 0xFF111827, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
-        titleParams.setMargins(0, dp(14), 0, 0);
+        titleParams.setMargins(0, dp(13), 0, 0);
         root.addView(title, titleParams);
 
         TextView subtitle = makeText(
-                "Tus chats reales de ChatGPT dentro de una ventana flotante",
-                17,
+                "Globo configurable con tus chats reales de ChatGPT",
+                16,
                 0xFF4B5563,
                 false
         );
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = matchWrap();
-        subtitleParams.setMargins(0, dp(8), 0, dp(22));
+        subtitleParams.setMargins(0, dp(7), 0, dp(18));
         root.addView(subtitle, subtitleParams);
 
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(16), dp(14), dp(16), dp(14));
-        GradientDrawable cardBackground = new GradientDrawable();
-        cardBackground.setColor(Color.WHITE);
-        cardBackground.setCornerRadius(dp(16));
-        cardBackground.setStroke(dp(1), 0x1A111827);
-        card.setBackground(cardBackground);
-
-        card.addView(makeText(
-                "No usa una clave API. El panel carga chatgpt.com directamente: al iniciar sesión aparecen el historial, la búsqueda, tus GPTs y los chats nuevos.",
-                15,
+        LinearLayout infoCard = makeCard();
+        infoCard.addView(makeText(
+                "No usa la API. Para cuentas iniciadas con Google, usa la app oficial o el navegador emergente. El panel web admite correo y contraseña, pero Google bloquea el acceso incrustado.",
+                14,
                 0xFF1F2937,
                 false
         ), matchWrap());
-
-        TextView loginNote = makeText(
-                "La sesión queda guardada solo en el WebView del teléfono. La app no inyecta código ni lee tu contraseña. Si Google rechaza el inicio dentro del panel, usa correo y contraseña de OpenAI.",
-                13,
+        TextView gestureHelp = makeText(
+                "Toca: abrir · Mantén pulsado: ajustes · Arrastra: mover · Arrastra hacia ×: apagar",
+                12,
                 0xFF6B7280,
                 false
         );
-        LinearLayout.LayoutParams loginParams = matchWrap();
-        loginParams.setMargins(0, dp(10), 0, 0);
-        card.addView(loginNote, loginParams);
-        root.addView(card, matchWrap());
+        LinearLayout.LayoutParams gestureParams = matchWrap();
+        gestureParams.setMargins(0, dp(8), 0, 0);
+        infoCard.addView(gestureHelp, gestureParams);
+        root.addView(infoCard, cardParams());
+
+        LinearLayout modeCard = makeCard();
+        modeCard.addView(makeText("Al tocar el globo", 17, 0xFF111827, true), matchWrap());
+
+        RadioGroup modeGroup = new RadioGroup(this);
+        modeGroup.setOrientation(RadioGroup.VERTICAL);
+        String officialLabel = OfficialChatLauncher.isOfficialAppInstalled(this)
+                ? "App oficial emergente — recomendada y con todos tus chats"
+                : "App oficial emergente — ChatGPT no está instalada";
+        RadioButton officialMode = makeRadio(
+                officialLabel,
+                AppPreferences.MODE_OFFICIAL.equals(AppPreferences.getMode(this))
+        );
+        officialMode.setId(101);
+        modeGroup.addView(officialMode);
+
+        RadioButton browserMode = makeRadio(
+                "Navegador emergente — usa tu sesión de Brave o Chrome",
+                AppPreferences.MODE_BROWSER.equals(AppPreferences.getMode(this))
+        );
+        browserMode.setId(102);
+        modeGroup.addView(browserMode);
+
+        RadioButton webMode = makeRadio(
+                "Panel web interno — solo correo/contraseña, Google lo bloquea",
+                AppPreferences.MODE_WEB.equals(AppPreferences.getMode(this))
+        );
+        webMode.setId(100);
+        modeGroup.addView(webMode);
+
+        modeGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            String mode = checkedId == 101
+                    ? AppPreferences.MODE_OFFICIAL
+                    : checkedId == 102 ? AppPreferences.MODE_BROWSER : AppPreferences.MODE_WEB;
+            AppPreferences.setMode(this, mode);
+            updateStatus();
+        });
+        modeCard.addView(modeGroup, matchWrap());
+
+        modeCard.addView(makeButton(
+                "Probar app oficial emergente",
+                false,
+                v -> testOfficialFloatingMode()
+        ), compactButtonParams());
+        modeCard.addView(makeButton(
+                "Probar navegador emergente",
+                false,
+                v -> testBrowserFloatingMode()
+        ), compactButtonParams());
+        modeCard.addView(makeButton(
+                "Probar panel web interno",
+                false,
+                v -> openFloatingChat()
+        ), compactButtonParams());
+        root.addView(modeCard, cardParams());
+
+        LinearLayout appearanceCard = makeCard();
+        appearanceCard.addView(makeText("Aspecto del globo", 17, 0xFF111827, true), matchWrap());
+
+        TextView sizeLabel = makeText(
+                "Tamaño: " + AppPreferences.getBubbleSize(this) + " dp",
+                13,
+                0xFF374151,
+                false
+        );
+        appearanceCard.addView(sizeLabel, labelParams());
+        SeekBar sizeSeek = new SeekBar(this);
+        sizeSeek.setMax(36);
+        sizeSeek.setProgress(AppPreferences.getBubbleSize(this) - 48);
+        sizeSeek.setOnSeekBarChangeListener(new SimpleSeekListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = 48 + progress;
+                sizeLabel.setText("Tamaño: " + value + " dp");
+                if (fromUser) {
+                    AppPreferences.setBubbleSize(MainActivity.this, value);
+                    refreshRunningBubble();
+                }
+            }
+        });
+        appearanceCard.addView(sizeSeek, matchWrap());
+
+        TextView opacityLabel = makeText(
+                "Opacidad: " + AppPreferences.getBubbleOpacity(this) + "%",
+                13,
+                0xFF374151,
+                false
+        );
+        appearanceCard.addView(opacityLabel, labelParams());
+        SeekBar opacitySeek = new SeekBar(this);
+        opacitySeek.setMax(55);
+        opacitySeek.setProgress(AppPreferences.getBubbleOpacity(this) - 45);
+        opacitySeek.setOnSeekBarChangeListener(new SimpleSeekListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = 45 + progress;
+                opacityLabel.setText("Opacidad: " + value + "%");
+                if (fromUser) {
+                    AppPreferences.setBubbleOpacity(MainActivity.this, value);
+                    refreshRunningBubble();
+                }
+            }
+        });
+        appearanceCard.addView(opacitySeek, matchWrap());
+
+        appearanceCard.addView(makeText("Tamaño inicial del panel", 13, 0xFF374151, false), labelParams());
+        RadioGroup panelGroup = new RadioGroup(this);
+        panelGroup.setOrientation(RadioGroup.HORIZONTAL);
+        int currentPanelSize = AppPreferences.getPanelSize(this);
+        RadioButton compact = makeRadio("Compacto", currentPanelSize == AppPreferences.PANEL_COMPACT);
+        compact.setId(200);
+        RadioButton large = makeRadio("Grande", currentPanelSize == AppPreferences.PANEL_LARGE);
+        large.setId(201);
+        RadioButton full = makeRadio("Completo", currentPanelSize == AppPreferences.PANEL_FULL);
+        full.setId(202);
+        panelGroup.addView(compact, new RadioGroup.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        panelGroup.addView(large, new RadioGroup.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        panelGroup.addView(full, new RadioGroup.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        panelGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            int size = checkedId == 200
+                    ? AppPreferences.PANEL_COMPACT
+                    : checkedId == 202 ? AppPreferences.PANEL_FULL : AppPreferences.PANEL_LARGE;
+            AppPreferences.setPanelSize(this, size);
+        });
+        appearanceCard.addView(panelGroup, matchWrap());
+        root.addView(appearanceCard, cardParams());
 
         statusView = makeText("", 14, 0xFF374151, true);
         LinearLayout.LayoutParams statusParams = matchWrap();
-        statusParams.setMargins(0, dp(18), 0, dp(8));
+        statusParams.setMargins(0, dp(8), 0, dp(8));
         root.addView(statusView, statusParams);
 
         permissionButton = makeButton("1. Permitir globo flotante", true, v -> requestOverlayPermission());
         root.addView(permissionButton, buttonParams());
-
         root.addView(makeButton("2. Activar globo", true, v -> startBubble()), buttonParams());
-        root.addView(makeButton("Abrir ventana ahora", false, v -> openFloatingChat()), buttonParams());
-        root.addView(makeButton("Abrir la app oficial", false, v -> openOfficialChatGpt()), buttonParams());
-        root.addView(makeButton("Desactivar globo", false, v -> {
-            stopService(new Intent(this, BubbleService.class));
-            Toast.makeText(this, "Globo desactivado", Toast.LENGTH_SHORT).show();
-        }), buttonParams());
+        root.addView(makeButton("Desactivar globo", false, v -> stopBubble()), buttonParams());
+        root.addView(makeButton("Cerrar sesión del panel web", false, v -> confirmClearWebSession()), buttonParams());
 
         TextView footer = makeText(
-                "Esta es una envoltura independiente y no una función oficial de OpenAI. Si cambia el inicio de sesión o el sitio web, el panel puede necesitar una actualización.",
+                "El modo oficial emergente depende de que One UI acepte los límites de ventana solicitados. Si los ignora, ChatGPT se abrirá en pantalla completa.",
                 12,
                 0xFF6B7280,
                 false
         );
         footer.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams footerParams = matchWrap();
-        footerParams.setMargins(0, dp(18), 0, 0);
+        footerParams.setMargins(0, dp(16), 0, 0);
         root.addView(footer, footerParams);
 
         return scroll;
@@ -143,11 +261,23 @@ public class MainActivity extends Activity {
     private void updateStatus() {
         boolean overlayGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
                 || Settings.canDrawOverlays(this);
+        String selectedMode = AppPreferences.getMode(this);
+        String mode = AppPreferences.MODE_OFFICIAL.equals(selectedMode)
+                ? "app oficial"
+                : AppPreferences.MODE_BROWSER.equals(selectedMode) ? "navegador" : "panel web";
+
         if (statusView != null) {
-            statusView.setText(overlayGranted
-                    ? "Estado: permiso de globo concedido"
-                    : "Estado: falta permitir Aparecer encima");
-            statusView.setTextColor(overlayGranted ? 0xFF047857 : 0xFFB45309);
+            if (!overlayGranted) {
+                statusView.setText("Estado: falta permitir Aparecer encima");
+                statusView.setTextColor(0xFFB45309);
+            } else {
+                statusView.setText(
+                        "Estado: permiso concedido · Globo "
+                                + (BubbleService.isRunning ? "activo" : "apagado")
+                                + " · Modo " + mode
+                );
+                statusView.setTextColor(BubbleService.isRunning ? 0xFF047857 : 0xFF374151);
+            }
         }
         if (permissionButton != null) {
             permissionButton.setText(overlayGranted
@@ -176,11 +306,24 @@ public class MainActivity extends Activity {
         }
 
         requestNotificationPermissionIfNeeded();
-
         Intent service = new Intent(this, BubbleService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
         else startService(service);
         Toast.makeText(this, "Globo activado", Toast.LENGTH_SHORT).show();
+        statusView.postDelayed(this::updateStatus, 250);
+    }
+
+    private void stopBubble() {
+        stopService(new Intent(this, BubbleService.class));
+        Toast.makeText(this, "Globo desactivado", Toast.LENGTH_SHORT).show();
+        statusView.postDelayed(this::updateStatus, 200);
+    }
+
+    private void refreshRunningBubble() {
+        if (!BubbleService.isRunning) return;
+        Intent refresh = new Intent(this, BubbleService.class);
+        refresh.setAction(BubbleService.ACTION_REFRESH);
+        startService(refresh);
     }
 
     private void requestNotificationPermissionIfNeeded() {
@@ -198,13 +341,46 @@ public class MainActivity extends Activity {
         startActivity(new Intent(this, ChatActivity.class));
     }
 
-    private void openOfficialChatGpt() {
-        Intent launch = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
-        if (launch != null) {
-            startActivity(launch);
-            return;
+    private void testOfficialFloatingMode() {
+        if (!OfficialChatLauncher.openOfficialApp(this, true)) {
+            Toast.makeText(this, "La app oficial de ChatGPT no está instalada", Toast.LENGTH_LONG).show();
         }
-        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://chatgpt.com/")));
+    }
+
+    private void testBrowserFloatingMode() {
+        if (!OfficialChatLauncher.openBrowser(this, "https://chatgpt.com/", true)) {
+            Toast.makeText(this, "No hay un navegador disponible", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void confirmClearWebSession() {
+        new AlertDialog.Builder(this)
+                .setTitle("¿Cerrar la sesión del panel?")
+                .setMessage("Borrará las cookies y datos locales del panel web. No elimina tus chats de ChatGPT.")
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Cerrar sesión", (dialog, which) -> clearWebSession())
+                .show();
+    }
+
+    private void clearWebSession() {
+        CookieManager.getInstance().removeAllCookies(value -> {
+            CookieManager.getInstance().flush();
+            Toast.makeText(this, "Sesión web eliminada", Toast.LENGTH_SHORT).show();
+        });
+        WebStorage.getInstance().deleteAllData();
+        getSharedPreferences("chat_web_state", MODE_PRIVATE).edit().clear().apply();
+    }
+
+    private LinearLayout makeCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(15), dp(13), dp(15), dp(13));
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(Color.WHITE);
+        background.setCornerRadius(dp(16));
+        background.setStroke(dp(1), 0x1A111827);
+        card.setBackground(background);
+        return card;
     }
 
     private TextView makeText(String text, int size, int color, boolean bold) {
@@ -217,10 +393,20 @@ public class MainActivity extends Activity {
         return view;
     }
 
+    private RadioButton makeRadio(String text, boolean checked) {
+        RadioButton radio = new RadioButton(this);
+        radio.setText(text);
+        radio.setTextSize(13);
+        radio.setTextColor(0xFF1F2937);
+        radio.setChecked(checked);
+        radio.setPadding(0, dp(3), 0, dp(3));
+        return radio;
+    }
+
     private Button makeButton(String text, boolean primary, View.OnClickListener listener) {
         Button button = new Button(this);
         button.setText(text);
-        button.setTextSize(15);
+        button.setTextSize(14);
         button.setTextColor(primary ? Color.WHITE : 0xFF111827);
         button.setAllCaps(false);
         button.setGravity(Gravity.CENTER);
@@ -228,11 +414,32 @@ public class MainActivity extends Activity {
         button.setOnClickListener(listener);
 
         GradientDrawable background = new GradientDrawable();
-        background.setColor(primary ? 0xFF2563EB : Color.WHITE);
+        background.setColor(primary ? 0xFF2563EB : 0xFFF9FAFB);
         background.setCornerRadius(dp(13));
         background.setStroke(dp(1), primary ? 0xFF2563EB : 0x22111827);
         button.setBackground(background);
         return button;
+    }
+
+    private LinearLayout.LayoutParams cardParams() {
+        LinearLayout.LayoutParams params = matchWrap();
+        params.setMargins(0, 0, 0, dp(12));
+        return params;
+    }
+
+    private LinearLayout.LayoutParams labelParams() {
+        LinearLayout.LayoutParams params = matchWrap();
+        params.setMargins(0, dp(11), 0, 0);
+        return params;
+    }
+
+    private LinearLayout.LayoutParams compactButtonParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(46)
+        );
+        params.setMargins(0, dp(5), 0, 0);
+        return params;
     }
 
     private LinearLayout.LayoutParams buttonParams() {
@@ -240,7 +447,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(52)
         );
-        params.setMargins(0, dp(6), 0, dp(6));
+        params.setMargins(0, dp(5), 0, dp(5));
         return params;
     }
 
@@ -253,5 +460,15 @@ public class MainActivity extends Activity {
 
     private int dp(int value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private abstract static class SimpleSeekListener implements SeekBar.OnSeekBarChangeListener {
+        @Override
+        public void onStartTrackingTouch(SeekBar seekBar) {
+        }
+
+        @Override
+        public void onStopTrackingTouch(SeekBar seekBar) {
+        }
     }
 }

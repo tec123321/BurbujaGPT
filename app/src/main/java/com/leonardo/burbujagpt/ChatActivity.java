@@ -2,8 +2,11 @@ package com.leonardo.burbujagpt;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -14,6 +17,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -24,26 +28,26 @@ import android.webkit.PermissionRequest;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.Locale;
 
-/**
- * Ventana flotante que muestra el sitio oficial de ChatGPT.
- *
- * No llama a endpoints privados ni inyecta JavaScript. La sesión y las cookies
- * pertenecen al WebView de Android y nunca se copian a la app oficial o a Chrome.
- */
+/** Ventana flotante que muestra el sitio oficial de ChatGPT. */
 public class ChatActivity extends Activity {
+    static final String EXTRA_URL = "chat_url";
+
     private static final String CHATGPT_URL = "https://chatgpt.com/";
     private static final String WEB_PREFS = "chat_web_state";
     private static final String KEY_LAST_URL = "last_chat_url";
@@ -52,9 +56,13 @@ public class ChatActivity extends Activity {
 
     private WebView webView;
     private ProgressBar progressBar;
+    private LinearLayout errorBar;
+    private TextView errorText;
+    private TextView titleView;
     private ValueCallback<Uri[]> fileCallback;
     private PermissionRequest pendingPermissionRequest;
-    private boolean fullScreen;
+    private int panelSize;
+    private boolean loginDialogShowing;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,14 +73,18 @@ public class ChatActivity extends Activity {
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         window.setGravity(Gravity.CENTER);
 
+        panelSize = AppPreferences.getPanelSize(this);
         setContentView(buildUi());
         applyWindowSize();
         configureWebView();
 
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
+            String requestedUrl = getIntent().getStringExtra(EXTRA_URL);
             String lastUrl = getSharedPreferences(WEB_PREFS, MODE_PRIVATE)
                     .getString(KEY_LAST_URL, CHATGPT_URL);
-            webView.loadUrl(lastUrl == null ? CHATGPT_URL : lastUrl);
+            webView.loadUrl(isSafeChatGptUrl(requestedUrl)
+                    ? requestedUrl
+                    : (lastUrl == null ? CHATGPT_URL : lastUrl));
         }
     }
 
@@ -80,6 +92,8 @@ public class ChatActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        String requestedUrl = intent.getStringExtra(EXTRA_URL);
+        if (webView != null && isSafeChatGptUrl(requestedUrl)) webView.loadUrl(requestedUrl);
     }
 
     private View buildUi() {
@@ -97,23 +111,28 @@ public class ChatActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(6), dp(5), dp(6), dp(5));
+        header.setPadding(dp(5), dp(4), dp(5), dp(4));
         header.setBackgroundColor(0xFF202123);
 
         header.addView(makeHeaderButton("‹", "Atrás", v -> goBack()), squareParams());
-        header.addView(makeHeaderButton("↻", "Recargar", v -> webView.reload()), squareParams());
+        header.addView(makeHeaderButton("+", "Chat nuevo", v -> webView.loadUrl(CHATGPT_URL)), squareParams());
 
-        TextView title = new TextView(this);
-        title.setText("ChatGPT flotante");
-        title.setTextColor(Color.WHITE);
-        title.setTextSize(15);
-        title.setGravity(Gravity.CENTER);
-        title.setSingleLine(true);
-        header.addView(title, new LinearLayout.LayoutParams(0, dp(44), 1));
+        titleView = new TextView(this);
+        titleView.setText("ChatGPT");
+        titleView.setTextColor(Color.WHITE);
+        titleView.setTextSize(15);
+        titleView.setGravity(Gravity.CENTER);
+        titleView.setSingleLine(true);
+        titleView.setContentDescription("Arrastra para mover la ventana");
+        titleView.setOnTouchListener(new WindowDragListener());
+        header.addView(titleView, new LinearLayout.LayoutParams(0, dp(44), 1));
 
-        header.addView(makeHeaderButton("↗", "Abrir la app oficial", v -> openOfficialApp()), squareParams());
-        header.addView(makeHeaderButton("□", "Cambiar tamaño", v -> toggleWindowSize()), squareParams());
+        header.addView(makeHeaderButton("□", "Cambiar tamaño", v -> cycleWindowSize()), squareParams());
         header.addView(makeHeaderButton("—", "Minimizar", v -> finish()), squareParams());
+
+        Button menuButton = makeHeaderButton("⋮", "Más opciones", null);
+        menuButton.setOnClickListener(v -> showMoreMenu(menuButton));
+        header.addView(menuButton, squareParams());
         root.addView(header, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -125,6 +144,35 @@ public class ChatActivity extends Activity {
         root.addView(progressBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(3)
+        ));
+
+        errorBar = new LinearLayout(this);
+        errorBar.setOrientation(LinearLayout.VERTICAL);
+        errorBar.setPadding(dp(12), dp(9), dp(12), dp(9));
+        errorBar.setBackgroundColor(0xFFFFE4E6);
+        errorBar.setVisibility(View.GONE);
+
+        errorText = new TextView(this);
+        errorText.setTextColor(0xFF881337);
+        errorText.setTextSize(13);
+        errorBar.addView(errorText, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
+        LinearLayout errorActions = new LinearLayout(this);
+        errorActions.setOrientation(LinearLayout.HORIZONTAL);
+        errorActions.setGravity(Gravity.END);
+        errorActions.addView(makeSmallButton("Reintentar", v -> webView.reload()));
+        errorActions.addView(makeSmallButton("Navegador", v -> openInBrowser()));
+        errorActions.addView(makeSmallButton("App oficial", v -> openOfficialApp()));
+        errorBar.addView(errorActions, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        root.addView(errorBar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
         FrameLayout webContainer = new FrameLayout(this);
@@ -190,6 +238,18 @@ public class ChatActivity extends Activity {
         button.setPadding(0, 0, 0, 0);
         button.setContentDescription(description);
         button.setBackgroundColor(Color.TRANSPARENT);
+        if (listener != null) button.setOnClickListener(listener);
+        return button;
+    }
+
+    private Button makeSmallButton(String text, View.OnClickListener listener) {
+        Button button = new Button(this);
+        button.setText(text);
+        button.setTextSize(11);
+        button.setAllCaps(false);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setPadding(dp(8), 0, dp(8), 0);
         button.setOnClickListener(listener);
         return button;
     }
@@ -198,37 +258,108 @@ public class ChatActivity extends Activity {
         return new LinearLayout.LayoutParams(dp(42), dp(44));
     }
 
+    private void showMoreMenu(View anchor) {
+        PopupMenu menu = new PopupMenu(this, anchor);
+        menu.getMenu().add(0, 1, 0, "Recargar");
+        menu.getMenu().add(0, 2, 1, "Abrir app oficial");
+        menu.getMenu().add(0, 3, 2, "Abrir en navegador");
+        menu.getMenu().add(0, 4, 3, "Copiar enlace del chat");
+        menu.getMenu().add(0, 5, 4, "Volver al inicio");
+        menu.setOnMenuItemClickListener(item -> {
+            switch (item.getItemId()) {
+                case 1:
+                    webView.reload();
+                    return true;
+                case 2:
+                    openOfficialApp();
+                    return true;
+                case 3:
+                    openInBrowser();
+                    return true;
+                case 4:
+                    copyCurrentUrl();
+                    return true;
+                case 5:
+                    webView.loadUrl(CHATGPT_URL);
+                    return true;
+                default:
+                    return false;
+            }
+        });
+        menu.show();
+    }
+
     private void goBack() {
         if (webView != null && webView.canGoBack()) webView.goBack();
         else finish();
     }
 
-    private void toggleWindowSize() {
-        fullScreen = !fullScreen;
+    private void cycleWindowSize() {
+        panelSize = (panelSize + 1) % 3;
+        AppPreferences.setPanelSize(this, panelSize);
         applyWindowSize();
     }
 
     private void applyWindowSize() {
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
         int screenHeight = getResources().getDisplayMetrics().heightPixels;
-        int width = fullScreen ? ViewGroup.LayoutParams.MATCH_PARENT : screenWidth - dp(12);
-        int height = fullScreen ? ViewGroup.LayoutParams.MATCH_PARENT : Math.min(
-                screenHeight - dp(84),
-                (int) (screenHeight * 0.86f)
-        );
+        int width;
+        int height;
+
+        if (panelSize == AppPreferences.PANEL_COMPACT) {
+            width = Math.min(screenWidth - dp(24), dp(420));
+            height = (int) (screenHeight * 0.70f);
+        } else if (panelSize == AppPreferences.PANEL_FULL) {
+            width = ViewGroup.LayoutParams.MATCH_PARENT;
+            height = ViewGroup.LayoutParams.MATCH_PARENT;
+        } else {
+            width = screenWidth - dp(12);
+            height = Math.min(screenHeight - dp(84), (int) (screenHeight * 0.86f));
+        }
+
         getWindow().setLayout(width, height);
         getWindow().setGravity(Gravity.CENTER);
+        if (panelSize == AppPreferences.PANEL_FULL) {
+            WindowManager.LayoutParams attributes = getWindow().getAttributes();
+            attributes.x = 0;
+            attributes.y = 0;
+            getWindow().setAttributes(attributes);
+        }
     }
 
     private void openOfficialApp() {
-        Intent launch = getPackageManager().getLaunchIntentForPackage("com.openai.chatgpt");
-        if (launch != null) {
-            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(launch);
+        if (OfficialChatLauncher.openOfficialApp(this, true)) {
             finish();
             return;
         }
-        openExternal(CHATGPT_URL);
+        Toast.makeText(this, "La app oficial no está instalada", Toast.LENGTH_SHORT).show();
+        OfficialChatLauncher.openBrowser(this, CHATGPT_URL, true);
+    }
+
+    private void openInBrowser() {
+        String currentUrl = webView == null ? CHATGPT_URL : webView.getUrl();
+        if (!OfficialChatLauncher.openBrowser(this, currentUrl, true)) {
+            Toast.makeText(this, "No hay navegador disponible", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void copyCurrentUrl() {
+        String url = webView == null ? null : webView.getUrl();
+        if (url == null || url.trim().isEmpty()) return;
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("ChatGPT", url));
+            Toast.makeText(this, "Enlace copiado", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private boolean isSafeChatGptUrl(String url) {
+        if (url == null) return false;
+        Uri uri = Uri.parse(url);
+        String host = uri.getHost();
+        return "https".equalsIgnoreCase(uri.getScheme())
+                && host != null
+                && (host.equals("chatgpt.com") || host.endsWith(".chatgpt.com"));
     }
 
     private boolean isTrustedWebDestination(Uri uri) {
@@ -242,19 +373,79 @@ public class ChatActivity extends Activity {
                 || host.equals("openai.com")
                 || host.endsWith(".openai.com")
                 || host.equals("auth0.com")
-                || host.endsWith(".auth0.com")
-                || host.equals("accounts.google.com")
+                || host.endsWith(".auth0.com");
+    }
+
+    private boolean isExternalIdentityProvider(Uri uri) {
+        if (uri == null) return false;
+        String host = uri.getHost();
+        if (host == null) return false;
+        host = host.toLowerCase(Locale.US);
+        return host.equals("accounts.google.com")
                 || host.equals("appleid.apple.com")
                 || host.equals("login.microsoftonline.com")
                 || host.equals("login.live.com");
     }
 
-    private void openExternal(String url) {
+    private void showEmbeddedLoginBlocked() {
+        if (loginDialogShowing || isFinishing()) return;
+        loginDialogShowing = true;
+        if (webView != null) webView.stopLoading();
+
+        new AlertDialog.Builder(this)
+                .setTitle("Google no permite este acceso")
+                .setMessage(
+                        "Google bloquea el inicio de sesión dentro de WebView. No es un error de tu cuenta. "
+                                + "Usa la app oficial o abre ChatGPT en Brave/Chrome. Si quieres continuar "
+                                + "dentro del panel, debes entrar con correo y contraseña de OpenAI."
+                )
+                .setNegativeButton("Usar correo", (dialog, which) -> {
+                    if (webView != null && webView.canGoBack()) webView.goBack();
+                    else if (webView != null) webView.loadUrl(CHATGPT_URL);
+                })
+                .setNeutralButton("Brave/Chrome", (dialog, which) ->
+                        OfficialChatLauncher.openBrowser(this, CHATGPT_URL, true))
+                .setPositiveButton("App oficial", (dialog, which) -> openOfficialApp())
+                .setOnDismissListener(dialog -> loginDialogShowing = false)
+                .show();
+    }
+
+    private boolean handleExternalNavigation(String url) {
         try {
-            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-        } catch (ActivityNotFoundException e) {
-            Toast.makeText(this, "No hay un navegador disponible", Toast.LENGTH_SHORT).show();
+            Uri uri = Uri.parse(url);
+            String scheme = uri.getScheme();
+            if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+                OfficialChatLauncher.openBrowser(this, url, false);
+                return true;
+            }
+            if ("intent".equalsIgnoreCase(scheme)) {
+                Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
+                intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                intent.setComponent(null);
+                intent.setSelector(null);
+                startActivity(intent);
+                return true;
+            }
+            if ("mailto".equalsIgnoreCase(scheme) || "tel".equalsIgnoreCase(scheme)) {
+                Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                startActivity(intent);
+                return true;
+            }
+        } catch (Exception ignored) {
         }
+        Toast.makeText(this, "No se pudo abrir ese enlace", Toast.LENGTH_SHORT).show();
+        return true;
+    }
+
+    private void showWebError(String message) {
+        if (errorBar == null || errorText == null) return;
+        errorText.setText(message);
+        errorBar.setVisibility(View.VISIBLE);
+    }
+
+    private void hideWebError() {
+        if (errorBar != null) errorBar.setVisibility(View.GONE);
     }
 
     private void handleWebPermission(PermissionRequest request) {
@@ -353,22 +544,62 @@ public class ChatActivity extends Activity {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
 
+    private class WindowDragListener implements View.OnTouchListener {
+        private int initialX;
+        private int initialY;
+        private float initialTouchX;
+        private float initialTouchY;
+
+        @Override
+        public boolean onTouch(View view, MotionEvent event) {
+            if (panelSize == AppPreferences.PANEL_FULL) return false;
+            WindowManager.LayoutParams attributes = getWindow().getAttributes();
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    initialX = attributes.x;
+                    initialY = attributes.y;
+                    initialTouchX = event.getRawX();
+                    initialTouchY = event.getRawY();
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    attributes.x = initialX + (int) (event.getRawX() - initialTouchX);
+                    attributes.y = initialY + (int) (event.getRawY() - initialTouchY);
+                    getWindow().setAttributes(attributes);
+                    return true;
+                default:
+                    return false;
+            }
+        }
+    }
+
     private class ChatWebViewClient extends WebViewClient {
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
             Uri uri = request.getUrl();
+            if (isExternalIdentityProvider(uri)) {
+                showEmbeddedLoginBlocked();
+                return true;
+            }
             if (isTrustedWebDestination(uri)) return false;
-            openExternal(uri.toString());
-            return true;
+            return handleExternalNavigation(uri.toString());
         }
 
         @SuppressWarnings("deprecation")
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
             Uri uri = Uri.parse(url);
+            if (isExternalIdentityProvider(uri)) {
+                showEmbeddedLoginBlocked();
+                return true;
+            }
             if (isTrustedWebDestination(uri)) return false;
-            openExternal(url);
-            return true;
+            return handleExternalNavigation(url);
+        }
+
+        @Override
+        public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+            hideWebError();
+            super.onPageStarted(view, url, favicon);
         }
 
         @Override
@@ -382,7 +613,32 @@ public class ChatActivity extends Activity {
                         .putString(KEY_LAST_URL, url)
                         .apply();
             }
+            String pageTitle = view.getTitle();
+            titleView.setText(pageTitle == null || pageTitle.trim().isEmpty() ? "ChatGPT" : pageTitle);
             super.onPageFinished(view, url);
+        }
+
+        @Override
+        public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+            if (request.isForMainFrame()) {
+                showWebError("No se pudo cargar ChatGPT: " + error.getDescription());
+            }
+            super.onReceivedError(view, request, error);
+        }
+
+        @Override
+        public void onReceivedHttpError(
+                WebView view,
+                WebResourceRequest request,
+                WebResourceResponse errorResponse
+        ) {
+            if (request.isForMainFrame() && errorResponse.getStatusCode() >= 400) {
+                showWebError(
+                        "ChatGPT devolvió el error " + errorResponse.getStatusCode()
+                                + ". Prueba el navegador o la app oficial."
+                );
+            }
+            super.onReceivedHttpError(view, request, errorResponse);
         }
     }
 
@@ -435,7 +691,7 @@ public class ChatActivity extends Activity {
                 long contentLength
         ) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                openExternal(url);
+                OfficialChatLauncher.openBrowser(ChatActivity.this, url, false);
                 return;
             }
 
@@ -458,7 +714,7 @@ public class ChatActivity extends Activity {
                 manager.enqueue(request);
                 Toast.makeText(ChatActivity.this, "Descarga iniciada", Toast.LENGTH_SHORT).show();
             } catch (Exception e) {
-                openExternal(url);
+                OfficialChatLauncher.openBrowser(ChatActivity.this, url, false);
             }
         }
     }
