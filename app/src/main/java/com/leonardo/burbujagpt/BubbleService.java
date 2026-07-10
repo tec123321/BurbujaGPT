@@ -7,14 +7,20 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Person;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
+import android.content.LocusId;
 import android.content.SharedPreferences;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
 import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
@@ -27,12 +33,17 @@ import android.view.animation.DecelerateInterpolator;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.Collections;
+
 /** Burbuja arrastrable que abre el panel web o la app oficial. */
 public class BubbleService extends Service {
     public static final String ACTION_STOP = "com.leonardo.burbujagpt.STOP";
     public static final String ACTION_REFRESH = "com.leonardo.burbujagpt.REFRESH";
 
     private static final String CHANNEL_ID = "bubble_service";
+    static final String NATIVE_CHANNEL_ID = "native_chat_bubble_v1";
+    static final String NATIVE_SHORTCUT_ID = "native_chatgpt_conversation";
+    private static final String NATIVE_CATEGORY = "com.leonardo.burbujagpt.category.CHAT";
     private static final String POSITION_PREFS = "bubble_position";
     private static final String KEY_X = "x";
     private static final String KEY_Y = "y";
@@ -47,12 +58,17 @@ public class BubbleService extends Service {
     private ValueAnimator snapAnimator;
     private int bubbleSizeDp;
     private boolean nearCloseTarget;
+    private boolean nativeSystemBubble;
 
     @Override
     public void onCreate() {
         super.onCreate();
         isRunning = true;
+        nativeSystemBubble = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                && AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this));
         startNotification();
+
+        if (nativeSystemBubble) return;
 
         if (!canDrawOverlays()) {
             Toast.makeText(this, "Falta el permiso Aparecer encima", Toast.LENGTH_LONG).show();
@@ -90,6 +106,7 @@ public class BubbleService extends Service {
         if (snapAnimator != null) snapAnimator.cancel();
         removeCloseTarget();
         removeBubble();
+        PersistentWebViewStore.destroyIfDetached();
         super.onDestroy();
     }
 
@@ -103,6 +120,11 @@ public class BubbleService extends Service {
     }
 
     private void startNotification() {
+        if (nativeSystemBubble) {
+            startNativeBubbleNotification();
+            return;
+        }
+
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager != null) {
             NotificationChannel channel = new NotificationChannel(
@@ -153,6 +175,120 @@ public class BubbleService extends Service {
                 .build();
 
         startForeground(1001, notification);
+    }
+
+    static void ensureNativeChannel(Context context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+        NotificationManager manager = context.getSystemService(NotificationManager.class);
+        if (manager == null) return;
+
+        NotificationChannel channel = new NotificationChannel(
+                NATIVE_CHANNEL_ID,
+                "ChatGPT en burbuja",
+                NotificationManager.IMPORTANCE_DEFAULT
+        );
+        channel.setDescription("Burbuja nativa de Android para la conversacion de ChatGPT");
+        channel.setShowBadge(true);
+        channel.setSound(null, null);
+        channel.enableVibration(false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) channel.setAllowBubbles(true);
+        manager.createNotificationChannel(channel);
+    }
+
+    private void startNativeBubbleNotification() {
+        ensureNativeChannel(this);
+        publishConversationShortcut();
+
+        Icon bubbleIcon = Icon.createWithResource(this, R.drawable.ic_bubble);
+        Person chatPartner = new Person.Builder()
+                .setName("ChatGPT")
+                .setIcon(bubbleIcon)
+                .setImportant(true)
+                .build();
+        Person user = new Person.Builder()
+                .setName("Tu")
+                .build();
+
+        Intent bubbleIntent = new Intent(this, NativeBubbleActivity.class);
+        bubbleIntent.setAction(Intent.ACTION_VIEW);
+        bubbleIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+        PendingIntent bubblePendingIntent = PendingIntent.getActivity(
+                this,
+                20,
+                bubbleIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Notification.BubbleMetadata bubbleData = new Notification.BubbleMetadata.Builder(
+                bubblePendingIntent,
+                bubbleIcon
+        )
+                .setDesiredHeight(dp(640))
+                .setAutoExpandBubble(true)
+                .setSuppressNotification(false)
+                .build();
+
+        Notification.MessagingStyle messagingStyle = new Notification.MessagingStyle(user)
+                .setConversationTitle("ChatGPT")
+                .addMessage("Burbuja lista", System.currentTimeMillis(), chatPartner);
+
+        Intent stopIntent = new Intent(this, BubbleService.class);
+        stopIntent.setAction(ACTION_STOP);
+        PendingIntent stopPendingIntent = PendingIntent.getService(
+                this,
+                21,
+                stopIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
+        Notification notification = new Notification.Builder(this, NATIVE_CHANNEL_ID)
+                .setContentTitle("ChatGPT")
+                .setContentText("Burbuja nativa activa")
+                .setSmallIcon(R.drawable.ic_bubble)
+                .setContentIntent(bubblePendingIntent)
+                .setStyle(messagingStyle)
+                .setCategory(Notification.CATEGORY_MESSAGE)
+                .setShortcutId(NATIVE_SHORTCUT_ID)
+                .setLocusId(new LocusId(NATIVE_SHORTCUT_ID))
+                .addPerson(chatPartner)
+                .setBubbleMetadata(bubbleData)
+                .setOnlyAlertOnce(true)
+                .setOngoing(true)
+                .addAction(new Notification.Action.Builder(
+                        R.drawable.ic_bubble,
+                        "Apagar",
+                        stopPendingIntent
+                ).build())
+                .build();
+
+        startForeground(1001, notification);
+    }
+
+    private void publishConversationShortcut() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
+        ShortcutManager manager = getSystemService(ShortcutManager.class);
+        if (manager == null) return;
+
+        Icon icon = Icon.createWithResource(this, R.drawable.ic_bubble);
+        Person person = new Person.Builder()
+                .setName("ChatGPT")
+                .setIcon(icon)
+                .setImportant(true)
+                .build();
+        Intent shortcutIntent = new Intent(this, NativeBubbleActivity.class);
+        shortcutIntent.setAction(Intent.ACTION_VIEW);
+
+        ShortcutInfo shortcut = new ShortcutInfo.Builder(this, NATIVE_SHORTCUT_ID)
+                .setShortLabel("ChatGPT")
+                .setLongLabel("ChatGPT en burbuja")
+                .setIcon(icon)
+                .setCategories(Collections.singleton(NATIVE_CATEGORY))
+                .setIntent(shortcutIntent)
+                .setPerson(person)
+                .setLocusId(new LocusId(NATIVE_SHORTCUT_ID))
+                .setLongLived(true)
+                .build();
+        manager.addDynamicShortcuts(Collections.singletonList(shortcut));
     }
 
     private void showBubble() {

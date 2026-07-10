@@ -3,6 +3,7 @@ package com.leonardo.burbujagpt;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.NotificationManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -95,7 +96,7 @@ public class MainActivity extends Activity {
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = makeText("BurbujaGPT V6", 28, COLOR_TEXT, true);
+        TextView title = makeText("BurbujaGPT V7", 28, COLOR_TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(13), 0, 0);
@@ -114,7 +115,7 @@ public class MainActivity extends Activity {
 
         LinearLayout infoCard = makeCard();
         infoCard.addView(makeText(
-                "No usa la API. Para cuentas iniciadas con Google, usa la app oficial o el navegador emergente. El panel web admite correo y contraseña, pero Google bloquea el acceso incrustado.",
+                "Ahora incluye una burbuja reconocida por Android. El panel conserva la misma pagina mientras el servicio esta activo. Para cuentas iniciadas con Google, el acceso incrustado sigue bloqueado por Google: usa correo y contrasena, la app oficial o el navegador.",
                 14,
                 COLOR_TEXT,
                 false
@@ -135,6 +136,18 @@ public class MainActivity extends Activity {
 
         RadioGroup modeGroup = new RadioGroup(this);
         modeGroup.setOrientation(RadioGroup.VERTICAL);
+
+        boolean nativeSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R;
+        RadioButton nativeMode = makeRadio(
+                nativeSupported
+                        ? "Burbuja nativa de Android — mantiene el panel y la pagina"
+                        : "Burbuja nativa — requiere Android 11 o posterior",
+                AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this))
+        );
+        nativeMode.setId(103);
+        nativeMode.setEnabled(nativeSupported);
+        modeGroup.addView(nativeMode);
+
         String officialLabel = OfficialChatLauncher.isOfficialAppInstalled(this)
                 ? "App oficial emergente — recomendada y con todos tus chats"
                 : "App oficial emergente — ChatGPT no está instalada";
@@ -160,13 +173,22 @@ public class MainActivity extends Activity {
         modeGroup.addView(webMode);
 
         modeGroup.setOnCheckedChangeListener((group, checkedId) -> {
-            String mode = checkedId == 101
+            String mode = checkedId == 103
+                    ? AppPreferences.MODE_NATIVE
+                    : checkedId == 101
                     ? AppPreferences.MODE_OFFICIAL
                     : checkedId == 102 ? AppPreferences.MODE_BROWSER : AppPreferences.MODE_WEB;
             AppPreferences.setMode(this, mode);
             updateStatus();
+            restartRunningBubbleForModeChange();
         });
         modeCard.addView(modeGroup, matchWrap());
+
+        modeCard.addView(makeButton(
+                "Configurar burbujas de Android / Samsung",
+                false,
+                v -> openNativeBubbleSettings()
+        ), compactButtonParams());
 
         modeCard.addView(makeButton(
                 "Probar app oficial emergente",
@@ -261,14 +283,14 @@ public class MainActivity extends Activity {
         statusParams.setMargins(0, dp(8), 0, dp(8));
         root.addView(statusView, statusParams);
 
-        permissionButton = makeButton("1. Permitir globo flotante", true, v -> requestOverlayPermission());
+        permissionButton = makeButton("1. Permitir globo flotante", true, v -> requestRequiredPermission());
         root.addView(permissionButton, buttonParams());
         root.addView(makeButton("2. Activar globo", true, v -> startBubble()), buttonParams());
         root.addView(makeButton("Desactivar globo", false, v -> stopBubble()), buttonParams());
         root.addView(makeButton("Cerrar sesión del panel web", false, v -> confirmClearWebSession()), buttonParams());
 
         TextView footer = makeText(
-                "El modo oficial emergente depende de que One UI acepte los límites de ventana solicitados. Si los ignora, ChatGPT se abrirá en pantalla completa.",
+                "En Samsung activa Ajustes > Notificaciones > Ajustes avanzados > Notificaciones flotantes > Burbujas. Android puede cerrar cualquier proceso bajo presion extrema de memoria, pero el servicio mantiene el WebView vivo en condiciones normales.",
                 12,
                 COLOR_MUTED,
                 false
@@ -285,17 +307,37 @@ public class MainActivity extends Activity {
         boolean overlayGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
                 || Settings.canDrawOverlays(this);
         String selectedMode = AppPreferences.getMode(this);
-        String mode = AppPreferences.MODE_OFFICIAL.equals(selectedMode)
+        boolean nativeMode = AppPreferences.MODE_NATIVE.equals(selectedMode);
+        boolean notificationsGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED;
+        boolean bubblesAllowed = true;
+        if (nativeMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            NotificationManager manager = getSystemService(NotificationManager.class);
+            bubblesAllowed = manager != null && manager.areBubblesAllowed();
+        }
+        String mode = nativeMode
+                ? "burbuja nativa"
+                : AppPreferences.MODE_OFFICIAL.equals(selectedMode)
                 ? "app oficial"
                 : AppPreferences.MODE_BROWSER.equals(selectedMode) ? "navegador" : "panel web";
 
         if (statusView != null) {
-            if (!overlayGranted) {
+            if (nativeMode && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+                statusView.setText("Estado: la burbuja nativa requiere Android 11 o posterior");
+                statusView.setTextColor(0xFFFBBF24);
+            } else if (nativeMode && !notificationsGranted) {
+                statusView.setText("Estado: falta permitir notificaciones para crear la burbuja");
+                statusView.setTextColor(0xFFFBBF24);
+            } else if (nativeMode && !bubblesAllowed) {
+                statusView.setText("Estado: activa Burbujas en los ajustes de notificaciones");
+                statusView.setTextColor(0xFFFBBF24);
+            } else if (!nativeMode && !overlayGranted) {
                 statusView.setText("Estado: falta permitir Aparecer encima");
                 statusView.setTextColor(0xFFFBBF24);
             } else {
                 statusView.setText(
-                        "Estado: permiso concedido · Globo "
+                        "Estado: listo · Globo "
                                 + (BubbleService.isRunning ? "activo" : "apagado")
                                 + " · Modo " + mode
                 );
@@ -303,9 +345,21 @@ public class MainActivity extends Activity {
             }
         }
         if (permissionButton != null) {
-            permissionButton.setText(overlayGranted
-                    ? "1. Permiso concedido"
-                    : "1. Permitir globo flotante");
+            if (nativeMode) {
+                permissionButton.setText("1. Configurar burbujas del sistema");
+            } else {
+                permissionButton.setText(overlayGranted
+                        ? "1. Permiso concedido"
+                        : "1. Permitir globo flotante");
+            }
+        }
+    }
+
+    private void requestRequiredPermission() {
+        if (AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this))) {
+            openNativeBubbleSettings();
+        } else {
+            requestOverlayPermission();
         }
     }
 
@@ -323,18 +377,30 @@ public class MainActivity extends Activity {
     }
 
     private void startBubble() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+        boolean nativeMode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                && AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this));
+        if (!nativeMode
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && !Settings.canDrawOverlays(this)) {
             requestOverlayPermission();
             return;
         }
 
-        requestNotificationPermissionIfNeeded();
+        if (!requestNotificationPermissionIfNeeded()) return;
+        launchBubbleService();
+        Toast.makeText(
+                this,
+                nativeMode ? "Burbuja nativa activada" : "Globo activado",
+                Toast.LENGTH_SHORT
+        ).show();
+        statusView.postDelayed(this::updateStatus, 250);
+        statusView.postDelayed(() -> moveTaskToBack(true), 450);
+    }
+
+    private void launchBubbleService() {
         Intent service = new Intent(this, BubbleService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
         else startService(service);
-        Toast.makeText(this, "Globo activado", Toast.LENGTH_SHORT).show();
-        statusView.postDelayed(this::updateStatus, 250);
-        statusView.postDelayed(() -> moveTaskToBack(true), 450);
     }
 
     private void stopBubble() {
@@ -350,7 +416,22 @@ public class MainActivity extends Activity {
         startService(refresh);
     }
 
-    private void requestNotificationPermissionIfNeeded() {
+    private void restartRunningBubbleForModeChange() {
+        if (!BubbleService.isRunning || statusView == null) return;
+        stopService(new Intent(this, BubbleService.class));
+        statusView.postDelayed(() -> {
+            boolean nativeMode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                    && AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this));
+            boolean overlayGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                    || Settings.canDrawOverlays(this);
+            if ((nativeMode || overlayGranted) && requestNotificationPermissionIfNeeded()) {
+                launchBubbleService();
+            }
+            statusView.postDelayed(this::updateStatus, 250);
+        }, 220);
+    }
+
+    private boolean requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -358,6 +439,42 @@ public class MainActivity extends Activity {
                     new String[]{Manifest.permission.POST_NOTIFICATIONS},
                     NOTIFICATION_PERMISSION_REQUEST
             );
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != NOTIFICATION_PERMISSION_REQUEST) return;
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            startBubble();
+        } else {
+            Toast.makeText(
+                    this,
+                    "Android necesita notificaciones para mostrar una burbuja nativa",
+                    Toast.LENGTH_LONG
+            ).show();
+            updateStatus();
+        }
+    }
+
+    private void openNativeBubbleSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            Toast.makeText(this, "La burbuja nativa requiere Android 11 o posterior", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        BubbleService.ensureNativeChannel(this);
+        Intent bubbleSettings = new Intent(Settings.ACTION_APP_NOTIFICATION_BUBBLE_SETTINGS);
+        bubbleSettings.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+        try {
+            startActivity(bubbleSettings);
+        } catch (Exception ignored) {
+            Intent notificationSettings = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            notificationSettings.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+            startActivity(notificationSettings);
         }
     }
 

@@ -1,76 +1,59 @@
-# BurbujaGPT V6
+# BurbujaGPT V7
 
-Aplicación Android en Java que mantiene un globo configurable sobre otras apps y permite abrir los chats reales de ChatGPT sin utilizar la API de OpenAI.
+Aplicacion Android en Java que permite abrir los chats reales de ChatGPT desde una burbuja, sin usar la API de OpenAI.
+
+## Novedades de V7
+
+- Nuevo modo **Burbuja nativa de Android** para Android 11 o posterior. Android y Samsung la reconocen como una conversacion en burbuja.
+- Notificacion de conversacion con `BubbleMetadata`, acceso directo dinamico y actividad expandible.
+- El WebView deja de pausarse al minimizar.
+- La misma pagina web se conserva en memoria mientras el servicio en primer plano sigue activo, incluso si Android destruye la actividad expandida al colapsar una burbuja nativa.
+- Acceso directo a los ajustes de burbujas de Android / Samsung.
+- El modo nativo no necesita el permiso **Aparecer encima**; solo necesita notificaciones y burbujas habilitadas.
+- Se conservan los modos de globo superpuesto, app oficial y navegador.
 
 ## Modos de apertura
 
-### App oficial emergente (predeterminado)
+### Burbuja nativa de Android
 
-Usa la sesión y todos los chats de la aplicación oficial. Intenta abrirla con límites de ventana libre de Samsung.
+Usa el sistema oficial de burbujas de Android. Al expandirse muestra el panel web interno. Al colapsarse, el servicio conserva la pagina y su sesion en condiciones normales.
+
+### App oficial emergente
+
+Usa la sesion y todos los chats de la aplicacion oficial. Intenta abrirla con los limites de ventana libre disponibles en Samsung.
 
 ### Navegador emergente
 
-Abre `chatgpt.com` en Brave, Chrome u otro navegador instalado. Usa la sesión real que ya exista en ese navegador y permite el inicio con Google.
+Abre `chatgpt.com` en Brave, Chrome u otro navegador instalado y usa la sesion que ya exista alli.
 
-### Panel web flotante
+### Panel web interno
 
-Carga `chatgpt.com` dentro de una ventana propia, movible y redimensionable. Google bloquea deliberadamente OAuth dentro de WebView (`disallowed_useragent`), por lo que este modo requiere correo y contraseña de OpenAI. La app intercepta los accesos sociales y ofrece cambiar a la app oficial o al navegador.
+Carga `chatgpt.com` dentro de una ventana propia, movible y redimensionable. Google bloquea OAuth dentro de WebView (`disallowed_useragent`), por lo que el acceso incrustado requiere correo y contrasena de OpenAI. La app intercepta los accesos sociales y ofrece cambiar a la app oficial o al navegador.
 
-## Mejoras de V6
+## Uso recomendado en Samsung
 
-- Un toque fuera del panel interno lo minimiza y permite interactuar con la aplicación situada detrás.
+1. Instala y abre **BurbujaGPT V7**.
+2. Selecciona **Burbuja nativa de Android**.
+3. Pulsa **Configurar burbujas de Android / Samsung**.
+4. Permite las notificaciones y las burbujas de la aplicacion.
+5. Si Samsung lo solicita, activa **Ajustes > Notificaciones > Ajustes avanzados > Notificaciones flotantes > Burbujas**.
+6. Vuelve a BurbujaGPT y pulsa **Activar globo**.
 
-- Un segundo toque en el globo minimiza el panel interno sin destruir el chat.
-- La ventana del chat usa una tarea independiente: detrás queda la aplicación que el usuario estaba utilizando, no la pantalla de ajustes de BurbujaGPT.
-- Tema oscuro en toda la aplicación y solicitud de esquema oscuro para el contenido web.
-- Barra superior más delgada y carcasa más redondeada.
-- Animación al minimizar.
-- Esquina inferior para redimensionar manualmente la ventana.
-- Recuerda tamaño y posición del panel.
+El globo superpuesto anterior sigue disponible para los otros tres modos y conserva sus gestos de tocar, mover, redimensionar y arrastrar hacia la zona roja para apagar.
 
-- Selector entre app oficial, navegador y panel web al tocar el globo.
-- Intento de ventana emergente con la app oficial de ChatGPT.
-- Tamaño del globo ajustable entre 48 y 84 dp.
-- Opacidad ajustable entre 45 y 100 %.
-- Tres tamaños iniciales para el panel web.
-- Panel movible arrastrando el título.
-- Globo con animación al tocar y al ajustarse al borde.
-- Zona roja de cierre al arrastrar el globo hacia la parte inferior.
-- Pulsación prolongada para volver a los ajustes.
-- Menú del panel para recargar, abrir navegador, abrir la app oficial y copiar el enlace.
-- Botón de chat nuevo.
-- Barra de recuperación cuando ChatGPT o la conexión devuelven un error.
-- Selector de archivos, descargas y permiso de micrófono bajo demanda.
-- Opción confirmada para borrar únicamente la sesión web local.
-- Validación de destinos externos y bloqueo de contenido mixto.
+## Limites
 
-## Uso
-
-1. Instala el APK.
-2. Abre **BurbujaGPT V6**.
-3. Elige **Panel web flotante** o **App oficial emergente**.
-4. Pulsa **Permitir globo flotante** y habilita **Aparecer encima**.
-5. Pulsa **Activar globo**.
-6. Toca el globo.
-
-Gestos:
-
-- Tocar: abrir el modo seleccionado.
-- Mantener pulsado: abrir ajustes.
-- Arrastrar: mover.
-- Arrastrar hacia el círculo rojo: apagar.
-
-## Límites
-
-- OpenAI no ofrece una API pública para leer el historial privado de ChatGPT. El modo web muestra el sitio oficial autenticado.
-- El WebView tiene una sesión independiente de Chrome y de la app oficial.
-- Google rechaza el inicio de sesión dentro de WebView con `403: disallowed_useragent`. No se reintenta ni se falsea el navegador: se usa correo/contraseña, el navegador o la app oficial.
-- Android no garantiza que una aplicación externa pueda forzar otra app a abrirse en ventana libre. En Samsung puede funcionar; si One UI ignora los límites, la app oficial se abre a pantalla completa.
-- El proyecto es independiente y no está afiliado con OpenAI.
+- OpenAI no ofrece una API publica para leer el historial privado de ChatGPT. El panel muestra el sitio oficial autenticado.
+- El WebView tiene una sesion independiente de Chrome y de la app oficial.
+- Google rechaza el inicio de sesion dentro de WebView con `403: disallowed_useragent`. No se falsea el navegador: se usa correo/contrasena, el navegador o la app oficial.
+- Una burbuja nativa solo puede mostrar una actividad de BurbujaGPT. Android no permite incrustar dentro de ella la actividad privada de la app oficial de ChatGPT ni compartir sus cookies.
+- El servicio en primer plano mejora mucho la continuidad, pero Android siempre puede finalizar una aplicacion bajo presion extrema, reinicio o ahorro de bateria agresivo.
+- Android no garantiza que una aplicacion externa pueda forzar otra app a abrirse en ventana libre.
+- El proyecto es independiente y no esta afiliado con OpenAI.
 
 ## Compilar
 
-En GitHub: **Actions > Build APK > Run workflow**. El resultado se publica como `BurbujaGPT-V6-debug-apk` y contiene `app-debug.apk`.
+En GitHub: **Actions > Build APK > Run workflow**. El resultado se publica como `BurbujaGPT-V7-debug-apk` y contiene `app-debug.apk`.
 
 En Android Studio: abre el proyecto y usa **Build > Build APK(s)**.
 

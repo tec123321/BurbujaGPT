@@ -9,8 +9,10 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
+import android.content.LocusId;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -75,29 +77,43 @@ public class ChatActivity extends Activity {
     private int panelSize;
     private boolean loginDialogShowing;
     private boolean customSize;
+    private boolean nativeBubbleMode;
+    private boolean reusedRetainedPage;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        Window window = getWindow();
-        window.setBackgroundDrawableResource(android.R.color.transparent);
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        window.setGravity(Gravity.CENTER);
-        window.addFlags(
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
-                        | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
-        );
-        setFinishOnTouchOutside(false);
+        nativeBubbleMode = this instanceof NativeBubbleActivity;
 
-        panelSize = AppPreferences.getPanelSize(this);
+        Window window = getWindow();
+        window.setBackgroundDrawable(nativeBubbleMode
+                ? new ColorDrawable(COLOR_PANEL)
+                : new ColorDrawable(Color.TRANSPARENT));
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        if (nativeBubbleMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            setLocusContext(new LocusId(BubbleService.NATIVE_SHORTCUT_ID), null);
+        }
+        if (!nativeBubbleMode) {
+            window.setGravity(Gravity.CENTER);
+            window.addFlags(
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                            | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+            );
+            setFinishOnTouchOutside(false);
+        }
+
+        panelSize = nativeBubbleMode
+                ? AppPreferences.PANEL_FULL
+                : AppPreferences.getPanelSize(this);
         customSize = getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE)
                 .getBoolean(KEY_CUSTOM_SIZE, false);
         setContentView(buildUi());
         applyWindowSize();
         configureWebView();
 
-        if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
+        if (!reusedRetainedPage
+                && (savedInstanceState == null || webView.restoreState(savedInstanceState) == null)) {
             String requestedUrl = getIntent().getStringExtra(EXTRA_URL);
             String lastUrl = getSharedPreferences(WEB_PREFS, MODE_PRIVATE)
                     .getString(KEY_LAST_URL, CHATGPT_URL);
@@ -130,10 +146,12 @@ public class ChatActivity extends Activity {
 
         GradientDrawable background = new GradientDrawable();
         background.setColor(COLOR_PANEL);
-        background.setCornerRadius(dp(22));
-        background.setStroke(dp(1), 0xFF3F3F46);
+        background.setCornerRadius(nativeBubbleMode ? 0 : dp(22));
+        background.setStroke(nativeBubbleMode ? 0 : dp(1), 0xFF3F3F46);
         root.setBackground(background);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) root.setElevation(dp(18));
+        if (!nativeBubbleMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            root.setElevation(dp(18));
+        }
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -204,8 +222,14 @@ public class ChatActivity extends Activity {
 
         FrameLayout webContainer = new FrameLayout(this);
         webContainer.setBackgroundColor(COLOR_WEB_BACKGROUND);
-        webView = new WebView(this);
+        reusedRetainedPage = PersistentWebViewStore.hasRetainedPage();
+        webView = PersistentWebViewStore.acquire(this);
         webView.setBackgroundColor(COLOR_WEB_BACKGROUND);
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        webView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
+        }
         webContainer.addView(webView, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -221,20 +245,22 @@ public class ChatActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT
         ));
 
-        TextView resizeHandle = new TextView(this);
-        resizeHandle.setText("◢");
-        resizeHandle.setTextColor(0xFFB4B4BE);
-        resizeHandle.setTextSize(17);
-        resizeHandle.setGravity(Gravity.CENTER);
-        resizeHandle.setContentDescription("Arrastra para cambiar el tamaño");
-        resizeHandle.setOnTouchListener(new WindowResizeListener());
-        FrameLayout.LayoutParams resizeParams = new FrameLayout.LayoutParams(
-                dp(30),
-                dp(30),
-                Gravity.BOTTOM | Gravity.END
-        );
-        resizeParams.setMargins(0, 0, dp(2), dp(2));
-        shell.addView(resizeHandle, resizeParams);
+        if (!nativeBubbleMode) {
+            TextView resizeHandle = new TextView(this);
+            resizeHandle.setText("◢");
+            resizeHandle.setTextColor(0xFFB4B4BE);
+            resizeHandle.setTextSize(17);
+            resizeHandle.setGravity(Gravity.CENTER);
+            resizeHandle.setContentDescription("Arrastra para cambiar el tamaño");
+            resizeHandle.setOnTouchListener(new WindowResizeListener());
+            FrameLayout.LayoutParams resizeParams = new FrameLayout.LayoutParams(
+                    dp(30),
+                    dp(30),
+                    Gravity.BOTTOM | Gravity.END
+            );
+            resizeParams.setMargins(0, 0, dp(2), dp(2));
+            shell.addView(resizeHandle, resizeParams);
+        }
 
         return shell;
     }
@@ -254,6 +280,10 @@ public class ChatActivity extends Activity {
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setSaveFormData(false);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            settings.setOffscreenPreRaster(true);
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
@@ -345,6 +375,11 @@ public class ChatActivity extends Activity {
     }
 
     private void minimizeChat() {
+        if (nativeBubbleMode) {
+            if (!moveTaskToBack(true)) finish();
+            return;
+        }
+
         View decor = getWindow().getDecorView();
         decor.animate().cancel();
         decor.animate()
@@ -373,6 +408,7 @@ public class ChatActivity extends Activity {
     }
 
     private void applyWindowSize() {
+        if (nativeBubbleMode) return;
         int screenWidth = getResources().getDisplayMetrics().widthPixels;
         int screenHeight = getResources().getDisplayMetrics().heightPixels;
         int width;
@@ -621,7 +657,6 @@ public class ChatActivity extends Activity {
     protected void onPause() {
         isVisible = false;
         CookieManager.getInstance().flush();
-        if (webView != null) webView.onPause();
         super.onPause();
     }
 
@@ -649,10 +684,14 @@ public class ChatActivity extends Activity {
         }
         if (webView != null) {
             CookieManager.getInstance().flush();
-            webView.stopLoading();
             webView.setWebChromeClient(null);
             webView.setWebViewClient(null);
-            webView.destroy();
+            webView.setDownloadListener(null);
+            if (BubbleService.isRunning) {
+                PersistentWebViewStore.release(getApplicationContext());
+            } else {
+                PersistentWebViewStore.destroy(webView);
+            }
             webView = null;
         }
         super.onDestroy();
@@ -665,7 +704,7 @@ public class ChatActivity extends Activity {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
-        if (event.getActionMasked() == MotionEvent.ACTION_OUTSIDE) {
+        if (!nativeBubbleMode && event.getActionMasked() == MotionEvent.ACTION_OUTSIDE) {
             minimizeChat();
             return true;
         }

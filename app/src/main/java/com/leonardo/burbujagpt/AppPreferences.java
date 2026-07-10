@@ -2,11 +2,13 @@ package com.leonardo.burbujagpt;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
 
 final class AppPreferences {
     static final String MODE_WEB = "web";
     static final String MODE_OFFICIAL = "official";
     static final String MODE_BROWSER = "browser";
+    static final String MODE_NATIVE = "native";
 
     static final int PANEL_COMPACT = 0;
     static final int PANEL_LARGE = 1;
@@ -26,12 +28,16 @@ final class AppPreferences {
     }
 
     static String getMode(Context context) {
-        return prefs(context).getString(KEY_MODE, MODE_OFFICIAL);
+        String defaultMode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                ? MODE_NATIVE
+                : MODE_OFFICIAL;
+        return prefs(context).getString(KEY_MODE, defaultMode);
     }
 
     static void setMode(Context context, String mode) {
         String safeMode;
-        if (MODE_OFFICIAL.equals(mode)) safeMode = MODE_OFFICIAL;
+        if (MODE_NATIVE.equals(mode)) safeMode = MODE_NATIVE;
+        else if (MODE_OFFICIAL.equals(mode)) safeMode = MODE_OFFICIAL;
         else if (MODE_BROWSER.equals(mode)) safeMode = MODE_BROWSER;
         else safeMode = MODE_WEB;
         prefs(context).edit().putString(KEY_MODE, safeMode).apply();
