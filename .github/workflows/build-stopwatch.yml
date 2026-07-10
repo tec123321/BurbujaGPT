@@ -40,6 +40,7 @@ jobs:
 
       - name: Build debug APK
         id: build
+        continue-on-error: true
         shell: bash
         run: |
           chmod +x gradlew
@@ -52,7 +53,7 @@ jobs:
           else
             tail -n 20 stopwatch-build.log
           fi
-          exit 0
+          exit "$status"
 
       - name: Upload build log
         if: always()
@@ -70,7 +71,7 @@ jobs:
           path: stopwatch/build/outputs/apk/debug/stopwatch-debug.apk
 
       - name: Publish build status to branch
-        if: github.event_name == 'push'
+        if: always() && github.event_name == 'push'
         shell: bash
         run: |
           mkdir -p build-status
