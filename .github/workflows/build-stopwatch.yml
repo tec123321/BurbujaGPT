@@ -19,6 +19,8 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+  issues: write
 
 jobs:
   build:
@@ -69,6 +71,30 @@ jobs:
         with:
           name: Cronometro-Lateral-debug-apk
           path: stopwatch/build/outputs/apk/debug/stopwatch-debug.apk
+
+      - name: Comment build result on PR
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if [ "${{ steps.build.outputs.status }}" = "0" ]; then
+            {
+              echo '### Compilación del cronómetro: correcta'
+              echo
+              echo 'Run ID: `${{ github.run_id }}`'
+              echo 'Artifact ID: `${{ steps.apk_upload.outputs.artifact-id }}`'
+            } > pr-comment.md
+          else
+            {
+              echo '### Compilación del cronómetro: error'
+              echo
+              echo '```text'
+              tail -n 140 stopwatch-build.log
+              echo '```'
+            } > pr-comment.md
+          fi
+          gh pr comment '${{ github.event.pull_request.number }}' --body-file pr-comment.md
 
       - name: Publish build status to branch
         if: always() && github.event_name == 'push'
