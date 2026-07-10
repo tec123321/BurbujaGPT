@@ -1,61 +1,60 @@
-# BurbujaGPT
+# BurbujaGPT V3
 
-App Android mínima en Java: muestra una burbuja flotante sobre otras apps. La V2 permite escribir una pregunta y recibir una respuesta de GPT dentro del panel flotante usando la API de OpenAI.
+Aplicación Android en Java que mantiene un globo arrastrable sobre otras apps. Al tocarlo abre `chatgpt.com` en una ventana flotante, usando la sesión real del usuario y no la API de OpenAI.
 
-## Qué hace
+## Qué cambia frente a V2
 
-- Burbuja flotante movible.
-- Panel flotante con campo para token API.
-- Campo para escribir una pregunta.
-- Botón **Enviar a GPT**.
-- Respuesta dentro de la burbuja.
-- Copiar pregunta o respuesta.
-- Abrir ChatGPT oficial como opción secundaria.
-
-## Límites
-
-- No incrusta la app oficial de ChatGPT dentro de la burbuja. Android no permite hacerlo de forma estable para apps externas.
-- Usa la API de OpenAI, no tu sesión de ChatGPT Plus.
-- El token se guarda localmente en el celular mediante SharedPreferences. No lo pegues en chats ni lo publiques.
-- No lee la pantalla ni mensajes privados.
+- Elimina el campo de token y el cliente de la API.
+- Muestra el sitio oficial de ChatGPT dentro de un WebView aislado.
+- Conserva las cookies de esa ventana para mantener la sesión iniciada.
+- Permite consultar el historial, buscar chats, abrir GPTs y crear conversaciones.
+- Incluye selector de archivos, descargas y permiso de micrófono solicitado solo cuando la página lo necesita.
+- El globo recuerda su posición y se ajusta al borde de la pantalla.
+- La ventana puede minimizarse, recargarse o ampliarse.
+- Incluye un acceso directo a la app oficial de ChatGPT.
 
 ## Cómo usar
 
 1. Instala el APK.
-2. Abre **BurbujaGPT**.
-3. Pulsa **Dar permiso de burbuja**.
-4. Activa **Aparecer encima**.
-5. Vuelve a la app.
-6. Pulsa **Activar burbuja**.
-7. Toca la burbuja **GPT**.
-8. Pega tu token API de OpenAI.
-9. Pulsa **Guardar token**.
-10. Escribe una pregunta.
-11. Pulsa **Enviar a GPT**.
+2. Abre **BurbujaGPT V3**.
+3. Pulsa **Permitir globo flotante** y activa **Aparecer encima**.
+4. Vuelve y pulsa **Activar globo**.
+5. Toca el globo de colores.
+6. Inicia sesión en la página oficial de ChatGPT.
 
-## Cómo compilar APK
+La sesión se guarda en el almacenamiento privado del WebView. El código no inyecta JavaScript, no lee contraseñas y no copia cookies desde Chrome ni desde la app oficial.
 
-### Desde GitHub Actions
+## Límites reales
 
-1. Entra al repositorio.
-2. Ve a **Actions**.
-3. Abre **Build APK**.
-4. Pulsa **Run workflow**.
-5. Cuando termine, descarga el artefacto **BurbujaGPT-debug-apk**.
-6. Dentro estará `app-debug.apk`.
+- OpenAI no ofrece una API pública para leer el historial privado de ChatGPT. Esta versión lo muestra cargando el sitio oficial autenticado.
+- La sesión del WebView es independiente de Chrome y de la app oficial; hay que iniciar sesión una vez dentro de la ventana.
+- Google, Microsoft o Apple pueden bloquear el inicio de sesión en navegadores incrustados. Si ocurre, añade una contraseña a tu cuenta desde **ChatGPT web > Configuración > Cuenta** y entra mediante correo y contraseña.
+- OpenAI puede cambiar el sitio o impedir su ejecución en WebView. En ese caso, el botón **Abrir la app oficial** seguirá disponible, pero no podrá conservarse la interfaz web dentro del globo hasta adaptar la app.
+- La aplicación no puede incrustar directamente la actividad privada de la app oficial ni reutilizar sus cookies: Android aísla los datos de cada aplicación.
+- Es un proyecto independiente, no oficial y no afiliado con OpenAI.
 
-### Desde Android Studio
+## Compilar el APK
 
-1. Instala Android Studio.
-2. Abre esta carpeta como proyecto.
-3. Espera a que sincronice Gradle.
-4. Ve a **Build > Build Bundle(s) / APK(s) > Build APK(s)**.
-5. Instala el APK en tu Samsung.
+### GitHub Actions
 
-## Configuración recomendada Samsung
+1. Abre la pestaña **Actions** del repositorio.
+2. Entra en **Build APK**.
+3. Ejecuta **Run workflow**.
+4. Descarga el artefacto `BurbujaGPT-V3-debug-apk`.
+5. Extrae e instala `app-debug.apk`.
 
-Ajustes > Aplicaciones > Acceso especial > Aparecer encima > BurbujaGPT > Permitir.
+### Android Studio
 
-Si el sistema cierra la burbuja:
+1. Abre el proyecto en Android Studio.
+2. Espera la sincronización de Gradle.
+3. Usa **Build > Build APK(s)**.
 
-Ajustes > Batería > Límites de uso en segundo plano > Apps nunca suspendidas > añade BurbujaGPT.
+## Samsung
+
+Para evitar que One UI cierre el globo:
+
+1. Ve a **Ajustes > Aplicaciones > BurbujaGPT > Batería**.
+2. Selecciona **Sin restricciones**.
+3. Mantén habilitado **Aparecer encima**.
+
+El proyecto apunta a Android 15 (`targetSdk 35`) y funciona desde Android 6 (`minSdk 23`).

@@ -1,13 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <queries>
         <package android:name="com.openai.chatgpt" />
-        <package android:name="com.google.android.apps.bard" />
-        <package android:name="com.whatsapp" />
-        <package android:name="com.whatsapp.w4b" />
     </queries>
 
     <application
@@ -15,7 +15,9 @@
         android:icon="@drawable/ic_bubble"
         android:label="@string/app_name"
         android:roundIcon="@drawable/ic_bubble"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme"
+        android:usesCleartextTraffic="false">
 
         <activity
             android:name=".MainActivity"
@@ -26,9 +28,23 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ChatActivity"
+            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:theme="@style/FloatingChatTheme" />
+
         <service
             android:name=".BubbleService"
             android:enabled="true"
-            android:exported="false" />
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Burbuja flotante iniciada por el usuario para abrir ChatGPT" />
+        </service>
     </application>
 </manifest>
