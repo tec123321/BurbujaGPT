@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       artifact_id: ${{ steps.apk_upload.outputs.artifact-id }}
+      status: ${{ steps.compile.outputs.status }}
+      diagnostic: ${{ steps.compile.outputs.diagnostic }}
     steps:
       - name: Checkout feature branch
         uses: actions/checkout@v4
@@ -41,12 +43,23 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK
+        id: compile
+        shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :stopwatch:assembleDebug --stacktrace
+          set +e
+          ./gradlew :stopwatch:assembleDebug --stacktrace > build.log 2>&1
+          status=$?
+          diagnostic=$(grep -E -m1 '(^| )error:|FAILURE:|What went wrong|Could not|Exception' build.log | tr '\r\n' ' ' | tr -cd '[:alnum:] _./:;,-' | cut -c1-180)
+          if [ -z "$diagnostic" ]; then diagnostic=$(tail -n 1 build.log | tr '\r\n' ' ' | tr -cd '[:alnum:] _./:;,-' | cut -c1-180); fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "diagnostic=$diagnostic" >> "$GITHUB_OUTPUT"
+          tail -n 80 build.log
+          exit 0
 
       - name: Upload APK
         id: apk_upload
+        if: steps.compile.outputs.status == '0'
         uses: actions/upload-artifact@v4
         with:
           name: Cronometro-Lateral-debug-apk
@@ -55,8 +68,8 @@ jobs:
   report:
     needs: build
     if: always()
-    name: artifact-${{ needs.build.outputs.artifact_id }}-result-${{ needs.build.result }}
+    name: status-${{ needs.build.outputs.status }}-${{ needs.build.outputs.diagnostic }}-artifact-${{ needs.build.outputs.artifact_id }}
     runs-on: ubuntu-latest
     steps:
       - name: Report artifact
-        run: echo "Artifact ${{ needs.build.outputs.artifact_id }} · ${{ needs.build.result }}"
+        run: echo "status=${{ needs.build.outputs.status }} artifact=${{ needs.build.outputs.artifact_id }}"
