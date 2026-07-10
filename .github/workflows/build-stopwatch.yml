@@ -36,7 +36,15 @@ jobs:
       - name: Build debug APK
         run: |
           chmod +x gradlew
-          ./gradlew :stopwatch:assembleDebug --stacktrace
+          set -o pipefail
+          ./gradlew :stopwatch:assembleDebug --stacktrace 2>&1 | tee stopwatch-build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cronometro-Lateral-build-log
+          path: stopwatch-build.log
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
