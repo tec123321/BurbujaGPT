@@ -18,18 +18,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
-  issues: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      artifact_id: ${{ steps.apk_upload.outputs.artifact-id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name }}
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -41,85 +39,22 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK
-        id: build
-        continue-on-error: true
-        shell: bash
         run: |
           chmod +x gradlew
-          set +e
-          ./gradlew :stopwatch:assembleDebug --stacktrace > stopwatch-build.log 2>&1
-          status=$?
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          if [ "$status" -ne 0 ]; then
-            tail -n 120 stopwatch-build.log
-          else
-            tail -n 20 stopwatch-build.log
-          fi
-          exit "$status"
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Cronometro-Lateral-build-log
-          path: stopwatch-build.log
+          ./gradlew :stopwatch:assembleDebug --stacktrace
 
       - name: Upload APK
         id: apk_upload
-        if: steps.build.outputs.status == '0'
         uses: actions/upload-artifact@v4
         with:
           name: Cronometro-Lateral-debug-apk
           path: stopwatch/build/outputs/apk/debug/stopwatch-debug.apk
 
-      - name: Comment build result on PR
-        if: always() && github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          if [ "${{ steps.build.outputs.status }}" = "0" ]; then
-            {
-              echo '### Compilación del cronómetro: correcta'
-              echo
-              echo 'Run ID: `${{ github.run_id }}`'
-              echo 'Artifact ID: `${{ steps.apk_upload.outputs.artifact-id }}`'
-            } > pr-comment.md
-          else
-            {
-              echo '### Compilación del cronómetro: error'
-              echo
-              echo '```text'
-              tail -n 140 stopwatch-build.log
-              echo '```'
-            } > pr-comment.md
-          fi
-          gh pr comment '${{ github.event.pull_request.number }}' --body-file pr-comment.md
-
-      - name: Publish build status to branch
-        if: always() && github.event_name == 'push'
-        shell: bash
-        run: |
-          mkdir -p build-status
-          if [ "${{ steps.build.outputs.status }}" = "0" ]; then
-            printf 'status=success\nrun_id=%s\nartifact_id=%s\ncommit=%s\n' \
-              '${{ github.run_id }}' \
-              '${{ steps.apk_upload.outputs.artifact-id }}' \
-              '${{ github.sha }}' > build-status/STOPWATCH_BUILD_RESULT.txt
-            rm -f build-status/STOPWATCH_BUILD_ERROR.txt
-          else
-            printf 'status=failure\nrun_id=%s\ncommit=%s\n\n' \
-              '${{ github.run_id }}' \
-              '${{ github.sha }}' > build-status/STOPWATCH_BUILD_ERROR.txt
-            tail -n 160 stopwatch-build.log >> build-status/STOPWATCH_BUILD_ERROR.txt
-            rm -f build-status/STOPWATCH_BUILD_RESULT.txt
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add build-status
-          git diff --cached --quiet || git commit -m 'Record stopwatch build result'
-          git push origin HEAD:cronometro-flotante
-
-      - name: Fail when compilation failed
-        if: steps.build.outputs.status != '0'
-        run: exit 1
+  report:
+    needs: build
+    if: always()
+    name: artifact-${{ needs.build.outputs.artifact_id }}-result-${{ needs.build.result }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report artifact
+        run: echo "Artifact ${{ needs.build.outputs.artifact_id }} · ${{ needs.build.result }}"
