@@ -34,10 +34,18 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK
+        shell: bash
         run: |
           chmod +x gradlew
-          set -o pipefail
-          ./gradlew :stopwatch:assembleDebug --stacktrace 2>&1 | tee stopwatch-build.log
+          set +e
+          ./gradlew :stopwatch:assembleDebug --stacktrace > stopwatch-build.log 2>&1
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 100 stopwatch-build.log
+          else
+            tail -n 20 stopwatch-build.log
+          fi
+          exit "$status"
 
       - name: Upload build log
         if: always()
