@@ -95,7 +95,7 @@ public class MainActivity extends Activity {
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = makeText("BurbujaGPT V5", 28, COLOR_TEXT, true);
+        TextView title = makeText("BurbujaGPT V6", 28, COLOR_TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(13), 0, 0);

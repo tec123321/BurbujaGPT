@@ -84,6 +84,11 @@ public class ChatActivity extends Activity {
         window.setBackgroundDrawableResource(android.R.color.transparent);
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         window.setGravity(Gravity.CENTER);
+        window.addFlags(
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                        | WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+        );
+        setFinishOnTouchOutside(false);
 
         panelSize = AppPreferences.getPanelSize(this);
         customSize = getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE)
@@ -656,6 +661,15 @@ public class ChatActivity extends Activity {
     @Override
     public void onBackPressed() {
         goBack();
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_OUTSIDE) {
+            minimizeChat();
+            return true;
+        }
+        return super.dispatchTouchEvent(event);
     }
 
     private int dp(int value) {

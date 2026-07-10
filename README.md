@@ -1,4 +1,4 @@
-# BurbujaGPT V5
+# BurbujaGPT V6
 
 Aplicación Android en Java que mantiene un globo configurable sobre otras apps y permite abrir los chats reales de ChatGPT sin utilizar la API de OpenAI.
 
@@ -16,7 +16,9 @@ Abre `chatgpt.com` en Brave, Chrome u otro navegador instalado. Usa la sesión r
 
 Carga `chatgpt.com` dentro de una ventana propia, movible y redimensionable. Google bloquea deliberadamente OAuth dentro de WebView (`disallowed_useragent`), por lo que este modo requiere correo y contraseña de OpenAI. La app intercepta los accesos sociales y ofrece cambiar a la app oficial o al navegador.
 
-## Mejoras de V5
+## Mejoras de V6
+
+- Un toque fuera del panel interno lo minimiza y permite interactuar con la aplicación situada detrás.
 
 - Un segundo toque en el globo minimiza el panel interno sin destruir el chat.
 - La ventana del chat usa una tarea independiente: detrás queda la aplicación que el usuario estaba utilizando, no la pantalla de ajustes de BurbujaGPT.
@@ -45,7 +47,7 @@ Carga `chatgpt.com` dentro de una ventana propia, movible y redimensionable. Goo
 ## Uso
 
 1. Instala el APK.
-2. Abre **BurbujaGPT V5**.
+2. Abre **BurbujaGPT V6**.
 3. Elige **Panel web flotante** o **App oficial emergente**.
 4. Pulsa **Permitir globo flotante** y habilita **Aparecer encima**.
 5. Pulsa **Activar globo**.
@@ -68,7 +70,7 @@ Gestos:
 
 ## Compilar
 
-En GitHub: **Actions > Build APK > Run workflow**. El resultado se publica como `BurbujaGPT-V5-debug-apk` y contiene `app-debug.apk`.
+En GitHub: **Actions > Build APK > Run workflow**. El resultado se publica como `BurbujaGPT-V6-debug-apk` y contiene `app-debug.apk`.
 
 En Android Studio: abre el proyecto y usa **Build > Build APK(s)**.
 
