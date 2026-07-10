@@ -3,6 +3,7 @@ package com.leonardo.burbujagpt;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Build;
+import android.util.Log;
 
 final class AppPreferences {
     static final String MODE_WEB = "web";
@@ -19,6 +20,8 @@ final class AppPreferences {
     private static final String KEY_BUBBLE_SIZE = "bubble_size_dp";
     private static final String KEY_BUBBLE_OPACITY = "bubble_opacity";
     private static final String KEY_PANEL_SIZE = "panel_size";
+    private static final String KEY_NATIVE_ERROR = "native_last_error";
+    private static final String KEY_NATIVE_FALLBACK = "native_fallback_required";
 
     private AppPreferences() {
     }
@@ -68,6 +71,50 @@ final class AppPreferences {
                 KEY_PANEL_SIZE,
                 clamp(panelSize, PANEL_COMPACT, PANEL_FULL)
         ).apply();
+    }
+
+    static void recordNativeError(Context context, String phase, Throwable error) {
+        String message = "Fase: " + phase
+                + "\nDispositivo: " + Build.MANUFACTURER + " " + Build.MODEL
+                + " · Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")"
+                + "\n" + Log.getStackTraceString(error);
+        recordNativeMessage(context, message);
+    }
+
+    static void recordNativeMessage(Context context, String message) {
+        String safeMessage = message == null ? "Error desconocido" : message;
+        if (safeMessage.length() > 3800) safeMessage = safeMessage.substring(0, 3800);
+        prefs(context).edit().putString(KEY_NATIVE_ERROR, safeMessage).commit();
+    }
+
+    static String getLastNativeError(Context context) {
+        return prefs(context).getString(KEY_NATIVE_ERROR, "");
+    }
+
+    static void clearNativeError(Context context) {
+        prefs(context).edit()
+                .remove(KEY_NATIVE_ERROR)
+                .putBoolean(KEY_NATIVE_FALLBACK, false)
+                .apply();
+    }
+
+    static boolean isNativeFallbackRequired(Context context) {
+        return prefs(context).getBoolean(KEY_NATIVE_FALLBACK, false);
+    }
+
+    static void setNativeFallbackRequired(Context context, boolean required) {
+        prefs(context).edit().putBoolean(KEY_NATIVE_FALLBACK, required).commit();
+    }
+
+    static void recordUncaughtCrash(Context context, Throwable error) {
+        String trace = Log.getStackTraceString(error);
+        if (MODE_NATIVE.equals(getMode(context))
+                && (trace.contains("NativeBubbleActivity")
+                || trace.contains("ChatActivity")
+                || trace.contains("BubbleService"))) {
+            recordNativeMessage(context, "Fallo no controlado\n" + trace);
+            setNativeFallbackRequired(context, true);
+        }
     }
 
     private static int clamp(int value, int min, int max) {

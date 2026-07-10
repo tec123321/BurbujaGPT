@@ -9,9 +9,9 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Person;
 import android.app.Service;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.LocusId;
 import android.content.SharedPreferences;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
@@ -22,8 +22,11 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Icon;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.provider.Settings;
+import android.service.notification.StatusBarNotification;
 import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -39,11 +42,15 @@ import java.util.Collections;
 public class BubbleService extends Service {
     public static final String ACTION_STOP = "com.leonardo.burbujagpt.STOP";
     public static final String ACTION_REFRESH = "com.leonardo.burbujagpt.REFRESH";
+    public static final String ACTION_SHOW_NATIVE = "com.leonardo.burbujagpt.SHOW_NATIVE";
 
     private static final String CHANNEL_ID = "bubble_service";
-    static final String NATIVE_CHANNEL_ID = "native_chat_bubble_v1";
-    static final String NATIVE_SHORTCUT_ID = "native_chatgpt_conversation";
+    static final String NATIVE_CHANNEL_ID = "native_chat_bubble_v2";
+    static final String NATIVE_SHORTCUT_ID = "native_chatgpt_conversation_v2";
+    private static final String OLD_NATIVE_SHORTCUT_ID = "native_chatgpt_conversation";
     private static final String NATIVE_CATEGORY = "com.leonardo.burbujagpt.category.CHAT";
+    private static final int SERVICE_NOTIFICATION_ID = 1001;
+    private static final int NATIVE_BUBBLE_NOTIFICATION_ID = 1002;
     private static final String POSITION_PREFS = "bubble_position";
     private static final String KEY_X = "x";
     private static final String KEY_Y = "y";
@@ -59,6 +66,7 @@ public class BubbleService extends Service {
     private int bubbleSizeDp;
     private boolean nearCloseTarget;
     private boolean nativeSystemBubble;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
     public void onCreate() {
@@ -66,18 +74,18 @@ public class BubbleService extends Service {
         isRunning = true;
         nativeSystemBubble = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                 && AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this));
-        startNotification();
+        startForegroundNotification();
 
-        if (nativeSystemBubble) return;
-
-        if (!canDrawOverlays()) {
-            Toast.makeText(this, "Falta el permiso Aparecer encima", Toast.LENGTH_LONG).show();
-            stopSelf();
-            return;
+        if (nativeSystemBubble && !AppPreferences.isNativeFallbackRequired(this)) {
+            if (tryPostNativeBubble()) {
+                scheduleNativeBubbleVerification();
+                return;
+            }
         }
 
-        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        showBubble();
+        activateOverlayFallback(nativeSystemBubble
+                ? "Samsung rechazo el inicio de la burbuja nativa"
+                : null);
     }
 
     @Override
@@ -86,6 +94,9 @@ public class BubbleService extends Service {
         if (ACTION_STOP.equals(action)) {
             stopSelf();
             return START_NOT_STICKY;
+        }
+        if (ACTION_SHOW_NATIVE.equals(action) && nativeSystemBubble) {
+            if (tryPostNativeBubble()) scheduleNativeBubbleVerification();
         }
         if (ACTION_REFRESH.equals(action)) refreshBubbleAppearance();
         return START_STICKY;
@@ -106,6 +117,9 @@ public class BubbleService extends Service {
         if (snapAnimator != null) snapAnimator.cancel();
         removeCloseTarget();
         removeBubble();
+        mainHandler.removeCallbacksAndMessages(null);
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) manager.cancel(NATIVE_BUBBLE_NOTIFICATION_ID);
         PersistentWebViewStore.destroyIfDetached();
         super.onDestroy();
     }
@@ -119,12 +133,7 @@ public class BubbleService extends Service {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this);
     }
 
-    private void startNotification() {
-        if (nativeSystemBubble) {
-            startNativeBubbleNotification();
-            return;
-        }
-
+    private void startForegroundNotification() {
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager != null) {
             NotificationChannel channel = new NotificationChannel(
@@ -163,7 +172,7 @@ public class BubbleService extends Service {
 
         Notification notification = builder
                 .setContentTitle("BurbujaGPT activa")
-                .setContentText("Toca para abrir; arrastra hacia × para apagar")
+                .setContentText("Mantiene el chat disponible en segundo plano")
                 .setSmallIcon(R.drawable.ic_bubble)
                 .setContentIntent(openPendingIntent)
                 .setOngoing(true)
@@ -174,7 +183,7 @@ public class BubbleService extends Service {
                 ).build())
                 .build();
 
-        startForeground(1001, notification);
+        startForeground(SERVICE_NOTIFICATION_ID, notification);
     }
 
     static void ensureNativeChannel(Context context) {
@@ -195,14 +204,24 @@ public class BubbleService extends Service {
         manager.createNotificationChannel(channel);
     }
 
-    private void startNativeBubbleNotification() {
+    private boolean tryPostNativeBubble() {
+        try {
+            postNativeBubbleNotification();
+            return true;
+        } catch (RuntimeException | LinkageError error) {
+            AppPreferences.recordNativeError(this, "registro", error);
+            AppPreferences.setNativeFallbackRequired(this, true);
+            activateOverlayFallback("Fallo al registrar la conversacion nativa");
+            return false;
+        }
+    }
+
+    private void postNativeBubbleNotification() {
         ensureNativeChannel(this);
         publishConversationShortcut();
 
-        Icon bubbleIcon = Icon.createWithResource(this, R.drawable.ic_bubble);
         Person chatPartner = new Person.Builder()
                 .setName("ChatGPT")
-                .setIcon(bubbleIcon)
                 .setImportant(true)
                 .build();
         Person user = new Person.Builder()
@@ -220,8 +239,7 @@ public class BubbleService extends Service {
         );
 
         Notification.BubbleMetadata bubbleData = new Notification.BubbleMetadata.Builder(
-                bubblePendingIntent,
-                bubbleIcon
+                NATIVE_SHORTCUT_ID
         )
                 .setDesiredHeight(dp(640))
                 .setAutoExpandBubble(true)
@@ -232,15 +250,6 @@ public class BubbleService extends Service {
                 .setConversationTitle("ChatGPT")
                 .addMessage("Burbuja lista", System.currentTimeMillis(), chatPartner);
 
-        Intent stopIntent = new Intent(this, BubbleService.class);
-        stopIntent.setAction(ACTION_STOP);
-        PendingIntent stopPendingIntent = PendingIntent.getService(
-                this,
-                21,
-                stopIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-
         Notification notification = new Notification.Builder(this, NATIVE_CHANNEL_ID)
                 .setContentTitle("ChatGPT")
                 .setContentText("Burbuja nativa activa")
@@ -249,19 +258,15 @@ public class BubbleService extends Service {
                 .setStyle(messagingStyle)
                 .setCategory(Notification.CATEGORY_MESSAGE)
                 .setShortcutId(NATIVE_SHORTCUT_ID)
-                .setLocusId(new LocusId(NATIVE_SHORTCUT_ID))
                 .addPerson(chatPartner)
                 .setBubbleMetadata(bubbleData)
                 .setOnlyAlertOnce(true)
-                .setOngoing(true)
-                .addAction(new Notification.Action.Builder(
-                        R.drawable.ic_bubble,
-                        "Apagar",
-                        stopPendingIntent
-                ).build())
+                .setShowWhen(false)
                 .build();
 
-        startForeground(1001, notification);
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) throw new IllegalStateException("NotificationManager no disponible");
+        manager.notify(NATIVE_BUBBLE_NOTIFICATION_ID, notification);
     }
 
     private void publishConversationShortcut() {
@@ -272,23 +277,81 @@ public class BubbleService extends Service {
         Icon icon = Icon.createWithResource(this, R.drawable.ic_bubble);
         Person person = new Person.Builder()
                 .setName("ChatGPT")
-                .setIcon(icon)
                 .setImportant(true)
                 .build();
         Intent shortcutIntent = new Intent(this, NativeBubbleActivity.class);
         shortcutIntent.setAction(Intent.ACTION_VIEW);
+        shortcutIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
 
         ShortcutInfo shortcut = new ShortcutInfo.Builder(this, NATIVE_SHORTCUT_ID)
                 .setShortLabel("ChatGPT")
                 .setLongLabel("ChatGPT en burbuja")
                 .setIcon(icon)
                 .setCategories(Collections.singleton(NATIVE_CATEGORY))
+                .setActivity(new ComponentName(this, MainActivity.class))
                 .setIntent(shortcutIntent)
                 .setPerson(person)
-                .setLocusId(new LocusId(NATIVE_SHORTCUT_ID))
                 .setLongLived(true)
                 .build();
-        manager.addDynamicShortcuts(Collections.singletonList(shortcut));
+        manager.removeDynamicShortcuts(Collections.singletonList(OLD_NATIVE_SHORTCUT_ID));
+        manager.pushDynamicShortcut(shortcut);
+    }
+
+    private void scheduleNativeBubbleVerification() {
+        mainHandler.removeCallbacksAndMessages(null);
+        mainHandler.postDelayed(() -> {
+            if (!isRunning || !nativeSystemBubble || isNativeNotificationBubbled()) return;
+            AppPreferences.recordNativeMessage(
+                    this,
+                    "Android publico la conversacion, pero Samsung no la convirtio en burbuja"
+            );
+            activateOverlayFallback("Samsung no mostro la burbuja del sistema");
+        }, 3500);
+    }
+
+    private boolean isNativeNotificationBubbled() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false;
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager == null) return false;
+        try {
+            for (StatusBarNotification item : manager.getActiveNotifications()) {
+                if (item.getId() == NATIVE_BUBBLE_NOTIFICATION_ID) {
+                    return Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+                            && (item.getNotification().flags & Notification.FLAG_BUBBLE) != 0;
+                }
+            }
+        } catch (RuntimeException ignored) {
+        }
+        return false;
+    }
+
+    private void activateOverlayFallback(String reason) {
+        nativeSystemBubble = false;
+        NotificationManager notifications = getSystemService(NotificationManager.class);
+        if (notifications != null) notifications.cancel(NATIVE_BUBBLE_NOTIFICATION_ID);
+
+        if (!canDrawOverlays()) {
+            if (reason != null) AppPreferences.recordNativeMessage(this, reason);
+            Toast.makeText(
+                    this,
+                    "No se pudo crear la burbuja nativa. Permite Aparecer encima para usar el respaldo.",
+                    Toast.LENGTH_LONG
+            ).show();
+            return;
+        }
+
+        if (windowManager == null) {
+            windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        }
+        if (bubbleView == null && windowManager != null) showBubble();
+        if (reason != null) {
+            AppPreferences.recordNativeMessage(this, reason);
+            Toast.makeText(
+                    this,
+                    "Samsung no abrio la burbuja nativa; active el globo compatible.",
+                    Toast.LENGTH_LONG
+            ).show();
+        }
     }
 
     private void showBubble() {

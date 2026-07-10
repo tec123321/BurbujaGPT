@@ -47,9 +47,9 @@
             android:documentLaunchMode="always"
             android:excludeFromRecents="true"
             android:exported="false"
+            android:label="ChatGPT"
             android:launchMode="standard"
             android:resizeableActivity="true"
-            android:taskAffinity=""
             android:theme="@style/NativeBubbleTheme" />
 
         <service

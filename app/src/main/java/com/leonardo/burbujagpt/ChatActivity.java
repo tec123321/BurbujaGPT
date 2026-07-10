@@ -9,7 +9,6 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.LocusId;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -50,6 +49,7 @@ import java.util.Locale;
 public class ChatActivity extends Activity {
     static final String EXTRA_URL = "chat_url";
     static final String EXTRA_MINIMIZE = "minimize_chat";
+    static final String EXTRA_SAFE_WEBVIEW = "safe_webview";
     static volatile boolean isVisible;
 
     private static final String CHATGPT_URL = "https://chatgpt.com/";
@@ -79,21 +79,21 @@ public class ChatActivity extends Activity {
     private boolean customSize;
     private boolean nativeBubbleMode;
     private boolean reusedRetainedPage;
+    private boolean safeWebViewMode;
+    private boolean persistentWebViewManaged;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         nativeBubbleMode = this instanceof NativeBubbleActivity;
+        safeWebViewMode = getIntent().getBooleanExtra(EXTRA_SAFE_WEBVIEW, false);
 
         Window window = getWindow();
         window.setBackgroundDrawable(nativeBubbleMode
                 ? new ColorDrawable(COLOR_PANEL)
                 : new ColorDrawable(Color.TRANSPARENT));
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-        if (nativeBubbleMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            setLocusContext(new LocusId(BubbleService.NATIVE_SHORTCUT_ID), null);
-        }
         if (!nativeBubbleMode) {
             window.setGravity(Gravity.CENTER);
             window.addFlags(
@@ -222,8 +222,15 @@ public class ChatActivity extends Activity {
 
         FrameLayout webContainer = new FrameLayout(this);
         webContainer.setBackgroundColor(COLOR_WEB_BACKGROUND);
-        reusedRetainedPage = PersistentWebViewStore.hasRetainedPage();
-        webView = PersistentWebViewStore.acquire(this);
+        if (safeWebViewMode) {
+            reusedRetainedPage = false;
+            persistentWebViewManaged = false;
+            webView = new WebView(this);
+        } else {
+            reusedRetainedPage = PersistentWebViewStore.hasRetainedPage();
+            persistentWebViewManaged = true;
+            webView = PersistentWebViewStore.acquire(this);
+        }
         webView.setBackgroundColor(COLOR_WEB_BACKGROUND);
         webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         webView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
@@ -687,10 +694,13 @@ public class ChatActivity extends Activity {
             webView.setWebChromeClient(null);
             webView.setWebViewClient(null);
             webView.setDownloadListener(null);
-            if (BubbleService.isRunning) {
+            if (persistentWebViewManaged && BubbleService.isRunning) {
                 PersistentWebViewStore.release(getApplicationContext());
-            } else {
+            } else if (persistentWebViewManaged) {
                 PersistentWebViewStore.destroy(webView);
+            } else {
+                webView.stopLoading();
+                webView.destroy();
             }
             webView = null;
         }

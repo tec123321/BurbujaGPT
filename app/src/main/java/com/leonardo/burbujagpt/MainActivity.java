@@ -4,6 +4,8 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.NotificationManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -96,7 +98,7 @@ public class MainActivity extends Activity {
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = makeText("BurbujaGPT V7", 28, COLOR_TEXT, true);
+        TextView title = makeText("BurbujaGPT V8", 28, COLOR_TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(13), 0, 0);
@@ -130,6 +132,37 @@ public class MainActivity extends Activity {
         gestureParams.setMargins(0, dp(8), 0, 0);
         infoCard.addView(gestureHelp, gestureParams);
         root.addView(infoCard, cardParams());
+
+        String lastNativeError = AppPreferences.getLastNativeError(this);
+        if (lastNativeError != null && !lastNativeError.trim().isEmpty()) {
+            LinearLayout diagnosticCard = makeCard();
+            diagnosticCard.addView(makeText(
+                    "Samsung rechazo el ultimo intento de burbuja nativa",
+                    16,
+                    0xFFFCA5A5,
+                    true
+            ), matchWrap());
+            TextView diagnosticText = makeText(
+                    summarizeDiagnostic(lastNativeError),
+                    12,
+                    COLOR_SUBTLE,
+                    false
+            );
+            LinearLayout.LayoutParams diagnosticParams = matchWrap();
+            diagnosticParams.setMargins(0, dp(7), 0, 0);
+            diagnosticCard.addView(diagnosticText, diagnosticParams);
+            diagnosticCard.addView(makeButton(
+                    "Copiar diagnostico",
+                    false,
+                    v -> copyNativeDiagnostic()
+            ), compactButtonParams());
+            diagnosticCard.addView(makeButton(
+                    "Limpiar y reintentar modo nativo",
+                    false,
+                    v -> retryNativeBubble()
+            ), compactButtonParams());
+            root.addView(diagnosticCard, cardParams());
+        }
 
         LinearLayout modeCard = makeCard();
         modeCard.addView(makeText("Al tocar el globo", 17, COLOR_TEXT, true), matchWrap());
@@ -178,6 +211,7 @@ public class MainActivity extends Activity {
                     : checkedId == 101
                     ? AppPreferences.MODE_OFFICIAL
                     : checkedId == 102 ? AppPreferences.MODE_BROWSER : AppPreferences.MODE_WEB;
+            if (checkedId == 103) AppPreferences.clearNativeError(this);
             AppPreferences.setMode(this, mode);
             updateStatus();
             restartRunningBubbleForModeChange();
@@ -188,6 +222,11 @@ public class MainActivity extends Activity {
                 "Configurar burbujas de Android / Samsung",
                 false,
                 v -> openNativeBubbleSettings()
+        ), compactButtonParams());
+        modeCard.addView(makeButton(
+                "Reintentar burbuja nativa",
+                false,
+                v -> retryNativeBubble()
         ), compactButtonParams());
 
         modeCard.addView(makeButton(
@@ -308,6 +347,7 @@ public class MainActivity extends Activity {
                 || Settings.canDrawOverlays(this);
         String selectedMode = AppPreferences.getMode(this);
         boolean nativeMode = AppPreferences.MODE_NATIVE.equals(selectedMode);
+        boolean nativeFallback = nativeMode && AppPreferences.isNativeFallbackRequired(this);
         boolean notificationsGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
                 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 == PackageManager.PERMISSION_GRANTED;
@@ -323,7 +363,10 @@ public class MainActivity extends Activity {
                 : AppPreferences.MODE_BROWSER.equals(selectedMode) ? "navegador" : "panel web";
 
         if (statusView != null) {
-            if (nativeMode && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            if (nativeFallback) {
+                statusView.setText("Estado: Samsung rechazo el modo nativo · Respaldo compatible activo");
+                statusView.setTextColor(0xFFFBBF24);
+            } else if (nativeMode && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                 statusView.setText("Estado: la burbuja nativa requiere Android 11 o posterior");
                 statusView.setTextColor(0xFFFBBF24);
             } else if (nativeMode && !notificationsGranted) {
@@ -379,7 +422,8 @@ public class MainActivity extends Activity {
     private void startBubble() {
         boolean nativeMode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                 && AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this));
-        if (!nativeMode
+        boolean needsOverlay = !nativeMode || AppPreferences.isNativeFallbackRequired(this);
+        if (needsOverlay
                 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                 && !Settings.canDrawOverlays(this)) {
             requestOverlayPermission();
@@ -390,17 +434,43 @@ public class MainActivity extends Activity {
         launchBubbleService();
         Toast.makeText(
                 this,
-                nativeMode ? "Burbuja nativa activada" : "Globo activado",
+                nativeMode ? "Solicitando burbuja nativa..." : "Globo activado",
                 Toast.LENGTH_SHORT
         ).show();
         statusView.postDelayed(this::updateStatus, 250);
-        statusView.postDelayed(() -> moveTaskToBack(true), 450);
+        statusView.postDelayed(() -> moveTaskToBack(true), 700);
     }
 
     private void launchBubbleService() {
         Intent service = new Intent(this, BubbleService.class);
+        service.setAction(BubbleService.ACTION_SHOW_NATIVE);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
         else startService(service);
+    }
+
+    private void retryNativeBubble() {
+        AppPreferences.clearNativeError(this);
+        AppPreferences.setMode(this, AppPreferences.MODE_NATIVE);
+        stopService(new Intent(this, BubbleService.class));
+        if (statusView != null) {
+            statusView.postDelayed(this::startBubble, 300);
+        } else {
+            getWindow().getDecorView().postDelayed(this::startBubble, 300);
+        }
+    }
+
+    private void copyNativeDiagnostic() {
+        String diagnostic = AppPreferences.getLastNativeError(this);
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard != null && diagnostic != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText("BurbujaGPT diagnostico", diagnostic));
+            Toast.makeText(this, "Diagnostico copiado", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String summarizeDiagnostic(String diagnostic) {
+        String oneLine = diagnostic.replace('\n', ' ').replaceAll("\\s+", " ").trim();
+        return oneLine.length() <= 280 ? oneLine : oneLine.substring(0, 280) + "...";
     }
 
     private void stopBubble() {
