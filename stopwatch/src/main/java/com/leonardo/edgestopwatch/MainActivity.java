@@ -9,7 +9,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -23,6 +22,11 @@ import android.widget.TextView;
 public class MainActivity extends Activity {
     private static final int REQUEST_OVERLAY = 4101;
     private static final int REQUEST_NOTIFICATIONS = 4102;
+
+    private static final int BACKGROUND = Color.rgb(18, 18, 18);
+    private static final int TEXT_PRIMARY = Color.rgb(245, 245, 245);
+    private static final int TEXT_SECONDARY = Color.rgb(190, 190, 190);
+    private static final int TEXT_MUTED = Color.rgb(145, 145, 145);
 
     private TextView permissionStatus;
     private TextView sizeValue;
@@ -43,25 +47,28 @@ public class MainActivity extends Activity {
 
     private View buildScreen() {
         ScrollView scroll = new ScrollView(this);
+        scroll.setBackgroundColor(BACKGROUND);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(20), dp(20), dp(20), dp(28));
+        root.setBackgroundColor(BACKGROUND);
         scroll.addView(root, new ScrollView.LayoutParams(
                 ScrollView.LayoutParams.MATCH_PARENT,
                 ScrollView.LayoutParams.WRAP_CONTENT));
 
-        TextView title = text("Cronómetro flotante lateral", 26, Color.rgb(25, 25, 25));
+        TextView title = text("Cronómetro flotante lateral", 26, TEXT_PRIMARY);
         title.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         root.addView(title);
 
         TextView description = text(
-                "Cuenta hacia arriba sobre cualquier aplicación. Puedes arrastrarlo, pausarlo y plegarlo en el borde dejando solo una pestaña pequeña.",
+                "Cuenta hacia arriba sobre cualquier aplicación. Puedes arrastrarlo, pausarlo y plegarlo en el borde: al ocultarlo quedan visibles solo los segundos.",
                 16,
-                Color.rgb(70, 70, 70));
+                TEXT_SECONDARY);
         description.setPadding(0, dp(8), 0, dp(16));
         root.addView(description);
 
-        permissionStatus = text("", 15, Color.rgb(80, 80, 80));
+        permissionStatus = text("", 15, TEXT_SECONDARY);
         permissionStatus.setPadding(0, 0, 0, dp(10));
         root.addView(permissionStatus);
 
@@ -86,7 +93,10 @@ public class MainActivity extends Activity {
 
         addSectionTitle(root, "Personalización");
 
-        sizeValue = text("Tamaño del tiempo: " + AppPrefs.getTextSize(this) + " sp", 16, Color.DKGRAY);
+        sizeValue = text(
+                "Tamaño del tiempo: " + AppPrefs.getTextSize(this) + " sp",
+                16,
+                TEXT_SECONDARY);
         root.addView(sizeValue);
         SeekBar sizeBar = new SeekBar(this);
         sizeBar.setMax(20);
@@ -103,7 +113,10 @@ public class MainActivity extends Activity {
         });
         root.addView(sizeBar, fullWidth());
 
-        opacityValue = text("Opacidad: " + AppPrefs.getOpacity(this) + "%", 16, Color.DKGRAY);
+        opacityValue = text(
+                "Opacidad: " + AppPrefs.getOpacity(this) + "%",
+                16,
+                TEXT_SECONDARY);
         opacityValue.setPadding(0, dp(8), 0, 0);
         root.addView(opacityValue);
         SeekBar opacityBar = new SeekBar(this);
@@ -121,7 +134,7 @@ public class MainActivity extends Activity {
         });
         root.addView(opacityBar, fullWidth());
 
-        TextView themeLabel = text("Color", 16, Color.DKGRAY);
+        TextView themeLabel = text("Color del cronómetro", 16, TEXT_SECONDARY);
         themeLabel.setPadding(0, dp(8), 0, dp(4));
         root.addView(themeLabel);
 
@@ -140,6 +153,7 @@ public class MainActivity extends Activity {
             radio.setId(View.generateViewId());
             radio.setTag(themeValues[i]);
             radio.setText(themeNames[i]);
+            radio.setTextColor(TEXT_PRIMARY);
             radio.setChecked(themeValues[i] == currentTheme);
             themeGroup.addView(radio);
         }
@@ -154,6 +168,7 @@ public class MainActivity extends Activity {
 
         Switch tenthsSwitch = new Switch(this);
         tenthsSwitch.setText("Mostrar décimas de segundo");
+        tenthsSwitch.setTextColor(TEXT_PRIMARY);
         tenthsSwitch.setChecked(AppPrefs.showTenths(this));
         tenthsSwitch.setPadding(0, dp(8), 0, dp(8));
         tenthsSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
@@ -163,23 +178,23 @@ public class MainActivity extends Activity {
         root.addView(tenthsSwitch, fullWidth());
 
         TextView usage = text(
-                "Uso: toca el tiempo para pausar o continuar. Arrástralo para moverlo. Pulsa la flecha para plegarlo en el borde y toca la pestaña para recuperarlo.",
+                "Uso: toca el tiempo para pausar o continuar. Arrástralo para moverlo. Pulsa la flecha para ocultarlo; quedará una franja mínima con los segundos en movimiento. Toca esa franja para recuperarlo.",
                 15,
-                Color.rgb(70, 70, 70));
+                TEXT_SECONDARY);
         usage.setPadding(0, dp(12), 0, dp(10));
         root.addView(usage);
 
         TextView privacy = text(
                 "No contiene anuncios, no usa Internet y no solicita acceso a archivos, cámara, micrófono, contactos ni ubicación.",
                 14,
-                Color.rgb(90, 90, 90));
+                TEXT_MUTED);
         root.addView(privacy);
 
         return scroll;
     }
 
     private void addSectionTitle(LinearLayout root, String value) {
-        TextView section = text(value, 20, Color.rgb(35, 35, 35));
+        TextView section = text(value, 20, TEXT_PRIMARY);
         section.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         section.setPadding(0, dp(24), 0, dp(10));
         root.addView(section);
@@ -252,10 +267,10 @@ public class MainActivity extends Activity {
         if (permissionStatus == null) return;
         if (Settings.canDrawOverlays(this)) {
             permissionStatus.setText("Permiso: concedido");
-            permissionStatus.setTextColor(Color.rgb(25, 115, 55));
+            permissionStatus.setTextColor(Color.rgb(129, 199, 132));
         } else {
             permissionStatus.setText("Permiso: falta activar ‘Aparecer encima’");
-            permissionStatus.setTextColor(Color.rgb(175, 40, 35));
+            permissionStatus.setTextColor(Color.rgb(239, 154, 154));
         }
     }
 
