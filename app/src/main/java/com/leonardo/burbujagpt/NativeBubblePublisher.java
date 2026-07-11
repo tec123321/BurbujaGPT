@@ -8,12 +8,12 @@ import android.app.Person;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.LocusId;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.os.Build;
-import android.os.LocusId;
 import android.service.notification.StatusBarNotification;
 
 import java.util.Arrays;
@@ -138,9 +138,7 @@ final class NativeBubblePublisher {
                 "native_chatgpt_conversation",
                 "native_chatgpt_conversation_v2"
         ));
-        if (!shortcuts.pushDynamicShortcut(shortcut)) {
-            throw new IllegalStateException("Android rechazó el acceso directo de conversación");
-        }
+        shortcuts.pushDynamicShortcut(shortcut);
     }
 
     private static Intent createBubbleIntent(Context context) {
