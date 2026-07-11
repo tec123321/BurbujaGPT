@@ -7,6 +7,7 @@ on:
     paths:
       - 'stopwatch/**'
       - 'tools/patch_stopwatch_squares.py'
+      - 'tools/patch_stopwatch_border.py'
       - 'settings.gradle'
       - '.github/workflows/build-stopwatch.yml'
   pull_request:
@@ -15,6 +16,7 @@ on:
     paths:
       - 'stopwatch/**'
       - 'tools/patch_stopwatch_squares.py'
+      - 'tools/patch_stopwatch_border.py'
       - 'settings.gradle'
       - '.github/workflows/build-stopwatch.yml'
   workflow_dispatch:
@@ -51,7 +53,7 @@ jobs:
         id: apk_upload
         uses: actions/upload-artifact@v4
         with:
-          name: Cronometro-Lateral-v1.8-debug-apk
+          name: Cronometro-Lateral-v1.9-debug-apk
           path: stopwatch/build/outputs/apk/debug/stopwatch-debug.apk
 
   report:
