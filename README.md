@@ -1,34 +1,49 @@
-# Globo GPT V11
+# Globo GPT V13
 
-Aplicación Android ligera que mantiene instalada la aplicación oficial de ChatGPT y la abre desde un globo flotante. No modifica, clona ni redistribuye el APK de OpenAI.
+Aplicación Android independiente para abrir ChatGPT desde un globo flotante sin
+modificar, clonar ni volver a firmar el APK oficial de OpenAI.
 
-## Cambio principal
+## Modos
 
-V11 elimina el WebView como modo predeterminado. Al tocar el globo:
+### Burbuja nativa con panel web persistente
 
-- abre o recupera la aplicación oficial `com.openai.chatgpt`;
-- conserva el inicio con Google, Plus, historial, voz y las funciones nativas;
-- solicita a Samsung/Android una ventana libre con tamaño emergente;
-- si One UI rechaza la vista emergente, abre ChatGPT normalmente sin perder la sesión;
-- evita `CLEAR_TOP` y usa reordenamiento de tarea para no reiniciar innecesariamente la app oficial.
+- Android reconoce la notificación como una conversación y la muestra como burbuja.
+- La actividad expandida contiene `https://chatgpt.com/`.
+- Cookies, almacenamiento local, URL y sesión se conservan.
+- La misma instancia de `WebView` permanece viva mientras el servicio está activo,
+  aunque la burbuja se contraiga.
+- Si Samsung rechaza la burbuja del sistema, se utiliza el globo superpuesto como
+  respaldo cuando el permiso **Aparecer encima** está concedido.
 
-El nombre visible es **Globo GPT** y el identificador sigue siendo `com.leonardo.burbujagpt`, por lo que se instala junto a ChatGPT oficial.
+Google no permite autenticarse dentro de WebView. Las cuentas que dependen de
+Google Login deben usar el modo oficial o el navegador.
 
-## Uso
+### Aplicación oficial en ventana emergente
 
-1. Instala y abre **Globo GPT V11**.
-2. Pulsa **Activar globo**.
-3. Permite **Aparecer encima** y las notificaciones.
-4. Toca el globo para abrir o recuperar ChatGPT.
-5. Mantén pulsado el globo para volver a la configuración.
-6. Arrástralo hacia la zona **×** para apagarlo.
+- Mantiene el paquete `com.openai.chatgpt`, su firma y su veredicto de Play Integrity.
+- Conserva Google Login, Plus, historial, voz y todas las funciones oficiales.
+- Con Shizuku iniciado y autorizado, solicita a Samsung/Android el modo de ventana
+  libre. Si One UI lo rechaza, se intenta el modo compatible del sistema.
 
-## Límite técnico
+### Modos de respaldo
 
-`ActivityOptions.setLaunchBounds()` solo tiene efecto cuando el dispositivo admite ventanas libres. La app también realiza una petición de mejor esfuerzo al modo freeform de Samsung, pero Android no ofrece una API pública que garantice forzar otra aplicación a vista emergente. La alternativa segura es abrir la app oficial en pantalla normal.
+- **Panel web compatible:** abre la misma sesión web en una actividad flotante.
+- **Navegador:** abre ChatGPT usando las cookies de Chrome, Brave u otro navegador.
+
+## Instalación y uso
+
+1. Instala y abre **Globo GPT V13**.
+2. Elige el modo.
+3. Para la burbuja nativa, habilita notificaciones y burbujas para Globo GPT.
+4. Opcionalmente concede **Aparecer encima** para el respaldo compatible.
+5. Pulsa **Activar globo**.
+
+Toca el globo para abrir o minimizar. Mantén pulsado para abrir los ajustes.
+Arrástralo hacia la zona **×** para detener el servicio.
 
 ## Compilar
 
-En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como `Globo-GPT-V11-debug-apk`.
+En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como
+`Globo-GPT-V13-native-session-debug-apk`.
 
-El proyecto utiliza `targetSdk 35` y `minSdk 23`.
+El proyecto utiliza `targetSdk 35`, `minSdk 24` y Java 17.

@@ -16,6 +16,7 @@ final class AppPreferences {
 
     private static final String PREFS = "burbujagpt_settings";
     private static final String KEY_MODE = "tap_mode";
+    private static final String KEY_CONFIG_VERSION = "config_version";
     private static final String KEY_BUBBLE_SIZE = "bubble_size_dp";
     private static final String KEY_BUBBLE_OPACITY = "bubble_opacity";
     private static final String KEY_PANEL_SIZE = "panel_size";
@@ -30,7 +31,25 @@ final class AppPreferences {
     }
 
     static String getMode(Context context) {
-        return prefs(context).getString(KEY_MODE, MODE_OFFICIAL);
+        return prefs(context).getString(KEY_MODE, MODE_NATIVE);
+    }
+
+    /**
+     * V12 forzaba el modo oficial cada vez que se abrían los ajustes. La migración
+     * se ejecuta una sola vez y devuelve el proyecto a su objetivo original:
+     * una burbuja propia con el panel web persistente. El usuario puede cambiar
+     * después al modo oficial y la elección se conserva.
+     */
+    static void migrateToV13(Context context) {
+        SharedPreferences preferences = prefs(context);
+        if (preferences.getInt(KEY_CONFIG_VERSION, 0) >= 13) return;
+
+        preferences.edit()
+                .putInt(KEY_CONFIG_VERSION, 13)
+                .putString(KEY_MODE, MODE_NATIVE)
+                .putBoolean(KEY_NATIVE_FALLBACK, false)
+                .remove(KEY_NATIVE_ERROR)
+                .apply();
     }
 
     static void setMode(Context context, String mode) {
