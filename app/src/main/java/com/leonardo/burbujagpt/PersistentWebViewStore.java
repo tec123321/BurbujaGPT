@@ -22,7 +22,16 @@ final class PersistentWebViewStore {
     }
 
     static boolean hasRetainedPage() {
-        return retainedWebView != null && retainedWebView.getUrl() != null;
+        if (retainedWebView == null) return false;
+        try {
+            String url = retainedWebView.getUrl();
+            // Un WebView recien precalentado puede representar about:blank; eso no es
+            // una pagina que debamos reutilizar en lugar de cargar ChatGPT.
+            return url != null && url.startsWith("https://");
+        } catch (RuntimeException error) {
+            discardAfterRendererGone(retainedWebView);
+            return false;
+        }
     }
 
     /**
