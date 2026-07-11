@@ -55,16 +55,17 @@ En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como 
 
 El proyecto utiliza `targetSdk 35` y `minSdk 23`.
 
-## Cronómetro lateral v1.4
+## Cronómetro lateral v1.6
 
 El módulo independiente `:stopwatch` genera la aplicación `com.leonardo.edgestopwatch`.
 
 - La barra contraída añade marcas negras por cada intervalo completado. El intervalo puede ser de 5, 10, 20 minutos o un valor personalizado entre 1 y 720 minutos.
+- El ancho y la altura (grosor) de cada marca se configuran por separado. El dibujo queda recortado al interior de la barra blanca y nunca sobresale de ella.
 - El panel admite hasta seis temporizadores configurables. Cada uno se puede mostrar u ocultar, iniciar, pausar y reiniciar por separado.
 - Un interruptor general desactiva todos los temporizadores sin eliminar su configuración.
 - La escala global ajusta el panel, los controles, los temporizadores, la barra contraída y la zona táctil.
 - El menú usa una interfaz más oscura y el icono representa el cronómetro junto con la barra lateral de intervalos.
 
-Para compilarlo en GitHub: **Actions > Build Edge Stopwatch APK > Run workflow**. El artefacto se publica como `Cronometro-Lateral-v1.4-debug-apk`.
+Para compilarlo en GitHub: **Actions > Build Edge Stopwatch APK > Run workflow**. El artefacto se publica como `Cronometro-Lateral-v1.6-debug-apk`.
 
 El artefacto automático usa una firma temporal de CI. El APK que se distribuya debe volver a firmarse con la clave estable externa descrita en [`stopwatch/SIGNING.md`](stopwatch/SIGNING.md); la clave privada no se guarda en el repositorio público.

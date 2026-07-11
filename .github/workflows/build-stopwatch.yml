@@ -49,7 +49,7 @@ jobs:
         id: apk_upload
         uses: actions/upload-artifact@v4
         with:
-          name: Cronometro-Lateral-v1.5-debug-apk
+          name: Cronometro-Lateral-v1.6-debug-apk
           path: stopwatch/build/outputs/apk/debug/stopwatch-debug.apk
 
   report:

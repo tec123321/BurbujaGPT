@@ -52,6 +52,8 @@ public class MainActivity extends Activity {
     private TextView opacityValue;
     private TextView scaleValue;
     private TextView intervalValue;
+    private TextView intervalMarkWidthValue;
+    private TextView intervalMarkHeightValue;
     private LinearLayout timersList;
     private final List<Button> intervalButtons = new ArrayList<>();
 
@@ -272,6 +274,45 @@ public class MainActivity extends Activity {
                 TEXT_MUTED);
         help.setPadding(0, dp(8), 0, dp(14));
         content.addView(help);
+
+        intervalMarkWidthValue = settingLabel(
+                "Ancho de cada marca",
+                AppPrefs.getIntervalMarkWidth(this) + " dp");
+        content.addView(intervalMarkWidthValue);
+        SeekBar markWidthBar = seekBar(
+                AppPrefs.MAX_INTERVAL_MARK_WIDTH_DP - AppPrefs.MIN_INTERVAL_MARK_WIDTH_DP,
+                AppPrefs.getIntervalMarkWidth(this) - AppPrefs.MIN_INTERVAL_MARK_WIDTH_DP);
+        markWidthBar.setOnSeekBarChangeListener(listener(progress -> {
+            int value = AppPrefs.MIN_INTERVAL_MARK_WIDTH_DP + progress;
+            AppPrefs.setIntervalMarkWidth(this, value);
+            intervalMarkWidthValue.setText(settingText("Ancho de cada marca", value + " dp"));
+            refreshOverlay();
+        }));
+        content.addView(markWidthBar, fullWidth());
+
+        intervalMarkHeightValue = settingLabel(
+                "Altura (grosor) de cada marca",
+                AppPrefs.getIntervalMarkHeight(this) + " dp");
+        content.addView(intervalMarkHeightValue, topMargin(8));
+        SeekBar markHeightBar = seekBar(
+                AppPrefs.MAX_INTERVAL_MARK_HEIGHT_DP - AppPrefs.MIN_INTERVAL_MARK_HEIGHT_DP,
+                AppPrefs.getIntervalMarkHeight(this) - AppPrefs.MIN_INTERVAL_MARK_HEIGHT_DP);
+        markHeightBar.setOnSeekBarChangeListener(listener(progress -> {
+            int value = AppPrefs.MIN_INTERVAL_MARK_HEIGHT_DP + progress;
+            AppPrefs.setIntervalMarkHeight(this, value);
+            intervalMarkHeightValue.setText(settingText(
+                    "Altura (grosor) de cada marca",
+                    value + " dp"));
+            refreshOverlay();
+        }));
+        content.addView(markHeightBar, fullWidth());
+
+        TextView dimensionsHelp = text(
+                "El ancho y la altura se ajustan dentro de la barra blanca; las marcas nunca sobresalen de ella.",
+                13,
+                TEXT_MUTED);
+        dimensionsHelp.setPadding(0, dp(4), 0, dp(14));
+        content.addView(dimensionsHelp);
 
         intervalValue = settingLabel("Intervalo actual", AppPrefs.getIntervalMinutes(this) + " min");
         content.addView(intervalValue);

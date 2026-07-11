@@ -23,6 +23,10 @@ final class AppPrefs {
     static final int MAX_UI_SCALE_PERCENT = 160;
     static final int MIN_INTERVAL_MINUTES = 1;
     static final int MAX_INTERVAL_MINUTES = 720;
+    static final int MIN_INTERVAL_MARK_WIDTH_DP = 1;
+    static final int MAX_INTERVAL_MARK_WIDTH_DP = 8;
+    static final int MIN_INTERVAL_MARK_HEIGHT_DP = 1;
+    static final int MAX_INTERVAL_MARK_HEIGHT_DP = 8;
     static final int MAX_TIMER_COUNT = 6;
     static final long MIN_TIMER_DURATION_MS = 1_000L;
     static final long MAX_TIMER_DURATION_MS = 99L * 60L * 60L * 1_000L
@@ -38,6 +42,8 @@ final class AppPrefs {
     private static final String KEY_UI_SCALE = "ui_scale_percent";
     private static final String KEY_INTERVAL_MARKS = "interval_marks_enabled";
     private static final String KEY_INTERVAL_MINUTES = "interval_minutes";
+    private static final String KEY_INTERVAL_MARK_WIDTH = "interval_mark_width_dp";
+    private static final String KEY_INTERVAL_MARK_HEIGHT = "interval_mark_height_dp";
     private static final String KEY_TIMERS_ENABLED = "timers_enabled";
     private static final String KEY_TIMER_CONFIGS = "timer_configs";
 
@@ -124,6 +130,32 @@ final class AppPrefs {
         prefs(context).edit().putInt(
                 KEY_INTERVAL_MINUTES,
                 clamp(value, MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES)).apply();
+    }
+
+    static int getIntervalMarkWidth(Context context) {
+        return clamp(
+                prefs(context).getInt(KEY_INTERVAL_MARK_WIDTH, MAX_INTERVAL_MARK_WIDTH_DP),
+                MIN_INTERVAL_MARK_WIDTH_DP,
+                MAX_INTERVAL_MARK_WIDTH_DP);
+    }
+
+    static void setIntervalMarkWidth(Context context, int value) {
+        prefs(context).edit().putInt(
+                KEY_INTERVAL_MARK_WIDTH,
+                clamp(value, MIN_INTERVAL_MARK_WIDTH_DP, MAX_INTERVAL_MARK_WIDTH_DP)).apply();
+    }
+
+    static int getIntervalMarkHeight(Context context) {
+        return clamp(
+                prefs(context).getInt(KEY_INTERVAL_MARK_HEIGHT, 3),
+                MIN_INTERVAL_MARK_HEIGHT_DP,
+                MAX_INTERVAL_MARK_HEIGHT_DP);
+    }
+
+    static void setIntervalMarkHeight(Context context, int value) {
+        prefs(context).edit().putInt(
+                KEY_INTERVAL_MARK_HEIGHT,
+                clamp(value, MIN_INTERVAL_MARK_HEIGHT_DP, MAX_INTERVAL_MARK_HEIGHT_DP)).apply();
     }
 
     static boolean timersEnabled(Context context) {

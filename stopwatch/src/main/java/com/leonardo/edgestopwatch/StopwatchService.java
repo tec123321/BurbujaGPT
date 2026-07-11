@@ -12,6 +12,7 @@ import android.content.SharedPreferences;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.graphics.Typeface;
@@ -658,7 +659,9 @@ public class StopwatchService extends Service {
         edgeTouchView.setIndicatorState(
                 running,
                 AppPrefs.intervalMarksEnabled(this),
-                TimeMath.completedIntervals(elapsedNow(), AppPrefs.getIntervalMinutes(this)));
+                TimeMath.completedIntervals(elapsedNow(), AppPrefs.getIntervalMinutes(this)),
+                AppPrefs.getIntervalMarkWidth(this),
+                AppPrefs.getIntervalMarkHeight(this));
     }
 
     private void showTrashTarget(boolean active) {
@@ -1195,13 +1198,14 @@ public class StopwatchService extends Service {
         private boolean stopwatchRunning;
         private boolean marksEnabled;
         private int markCount;
+        private int markWidthDp;
+        private int markHeightDp;
 
         EdgeProgressView(Context context) {
             super(context);
             linePaint.setStyle(Paint.Style.FILL);
             strokePaint.setStyle(Paint.Style.STROKE);
-            markPaint.setStyle(Paint.Style.STROKE);
-            markPaint.setStrokeCap(Paint.Cap.SQUARE);
+            markPaint.setStyle(Paint.Style.FILL);
         }
 
         void setSideLeft(boolean value) {
@@ -1210,12 +1214,33 @@ public class StopwatchService extends Service {
             invalidate();
         }
 
-        void setIndicatorState(boolean isRunning, boolean enabled, int completedMarks) {
+        void setIndicatorState(
+                boolean isRunning,
+                boolean enabled,
+                int completedMarks,
+                int configuredMarkWidthDp,
+                int configuredMarkHeightDp) {
             int safeCount = Math.max(0, Math.min(120, completedMarks));
-            if (stopwatchRunning == isRunning && marksEnabled == enabled && markCount == safeCount) return;
+            int safeWidth = AppPrefs.clamp(
+                    configuredMarkWidthDp,
+                    AppPrefs.MIN_INTERVAL_MARK_WIDTH_DP,
+                    AppPrefs.MAX_INTERVAL_MARK_WIDTH_DP);
+            int safeHeight = AppPrefs.clamp(
+                    configuredMarkHeightDp,
+                    AppPrefs.MIN_INTERVAL_MARK_HEIGHT_DP,
+                    AppPrefs.MAX_INTERVAL_MARK_HEIGHT_DP);
+            if (stopwatchRunning == isRunning
+                    && marksEnabled == enabled
+                    && markCount == safeCount
+                    && markWidthDp == safeWidth
+                    && markHeightDp == safeHeight) {
+                return;
+            }
             stopwatchRunning = isRunning;
             marksEnabled = enabled;
             markCount = safeCount;
+            markWidthDp = safeWidth;
+            markHeightDp = safeHeight;
             invalidate();
         }
 
@@ -1237,24 +1262,36 @@ public class StopwatchService extends Service {
             }
 
             if (!stopwatchRunning || !marksEnabled || markCount <= 0) return;
-            float padding = scaledDp(4);
-            float usable = Math.max(1f, getHeight() - padding * 2f);
-            float preferredStep = scaledDp(5);
+            float configuredWidth = Math.min(line.width(), scaledDp(markWidthDp));
+            float configuredHeight = Math.min(line.height(), scaledDp(markHeightDp));
+            float verticalInset = Math.max(radius, configuredHeight / 2f);
+            float firstY = line.top + verticalInset;
+            float lastY = line.bottom - verticalInset;
+            float usable = Math.max(1f, lastY - firstY);
+            float preferredStep = Math.max(scaledDp(5), configuredHeight + scaledDp(2));
             float step = markCount * preferredStep <= usable
                     ? preferredStep
                     : usable / (markCount + 1f);
-            float thickness = Math.max(1f, Math.min(scaledDp(3), step * 0.65f));
-            float markLength = Math.min(getWidth(), scaledDp(30));
-            float startX = drawLeft ? 0f : getWidth() - markLength;
-            float endX = drawLeft ? markLength : getWidth();
+            float centerX = line.centerX();
+            float markLeft = Math.max(line.left, centerX - configuredWidth / 2f);
+            float markRight = Math.min(line.right, centerX + configuredWidth / 2f);
 
             markPaint.setColor(Color.BLACK);
-            markPaint.setStrokeWidth(thickness);
+            Path lineClip = new Path();
+            lineClip.addRoundRect(line, radius, radius, Path.Direction.CW);
+            int restoreTo = canvas.save();
+            canvas.clipPath(lineClip);
             for (int i = 1; i <= markCount; i++) {
-                float y = getHeight() - padding - i * step;
-                if (y < padding) break;
-                canvas.drawLine(startX, y, endX, y, markPaint);
+                float centerY = lastY - i * step;
+                if (centerY < firstY) break;
+                RectF mark = new RectF(
+                        markLeft,
+                        Math.max(line.top, centerY - configuredHeight / 2f),
+                        markRight,
+                        Math.min(line.bottom, centerY + configuredHeight / 2f));
+                canvas.drawRect(mark, markPaint);
             }
+            canvas.restoreToCount(restoreTo);
         }
     }
 
