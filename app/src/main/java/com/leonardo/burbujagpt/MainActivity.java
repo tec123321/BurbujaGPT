@@ -98,7 +98,7 @@ public class MainActivity extends Activity {
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = makeText("BurbujaGPT V8", 28, COLOR_TEXT, true);
+        TextView title = makeText("BurbujaGPT V10", 28, COLOR_TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(13), 0, 0);
@@ -117,7 +117,7 @@ public class MainActivity extends Activity {
 
         LinearLayout infoCard = makeCard();
         infoCard.addView(makeText(
-                "Ahora incluye una burbuja reconocida por Android. El panel conserva la misma pagina mientras el servicio esta activo. Para cuentas iniciadas con Google, el acceso incrustado sigue bloqueado por Google: usa correo y contrasena, la app oficial o el navegador.",
+                "El panel empieza a cargar tu ultima pagina al activar el globo, antes de que lo toques. V10 conserva la pagina, reduce animaciones y reconstruye el WebView si Android detiene su motor. Para cuentas iniciadas con Google, el acceso incrustado sigue bloqueado por Google: usa correo y contrasena, la app oficial o el navegador.",
                 14,
                 COLOR_TEXT,
                 false

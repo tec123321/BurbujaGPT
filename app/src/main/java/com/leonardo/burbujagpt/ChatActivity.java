@@ -1,6 +1,7 @@
 package com.leonardo.burbujagpt;
 
 import android.Manifest;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
@@ -17,6 +18,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -26,6 +29,7 @@ import android.view.WindowManager;
 import android.webkit.CookieManager;
 import android.webkit.DownloadListener;
 import android.webkit.PermissionRequest;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -66,8 +70,21 @@ public class ChatActivity extends Activity {
     private static final int COLOR_PANEL = 0xFF18181B;
     private static final int COLOR_HEADER = 0xFF09090B;
     private static final int COLOR_WEB_BACKGROUND = 0xFF212121;
+    private static final long LOAD_STALL_TIMEOUT_MS = 30_000L;
+    private static final String FAST_UI_SCRIPT =
+            "(function(){"
+                    + "if(document.getElementById('burbujagpt-fast-ui'))return;"
+                    + "var s=document.createElement('style');"
+                    + "s.id='burbujagpt-fast-ui';"
+                    + "s.textContent='html,body,[data-radix-scroll-area-viewport]"
+                    + "{scroll-behavior:auto!important;}"
+                    + "[class~=transition],[class~=transition-all]"
+                    + "{transition-duration:80ms!important;}';"
+                    + "(document.head||document.documentElement).appendChild(s);"
+                    + "})();";
 
     private WebView webView;
+    private FrameLayout webContainer;
     private ProgressBar progressBar;
     private LinearLayout errorBar;
     private TextView errorText;
@@ -81,6 +98,12 @@ public class ChatActivity extends Activity {
     private boolean reusedRetainedPage;
     private boolean safeWebViewMode;
     private boolean persistentWebViewManaged;
+    private boolean recoveringWebView;
+    private boolean pageCommitted;
+    private int loadGeneration;
+    private int automaticRecoveryCount;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Runnable loadWatchdog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -112,14 +135,16 @@ public class ChatActivity extends Activity {
         applyWindowSize();
         configureWebView();
 
-        if (!reusedRetainedPage
-                && (savedInstanceState == null || webView.restoreState(savedInstanceState) == null)) {
+        boolean restoredState = !reusedRetainedPage
+                && savedInstanceState != null
+                && webView.restoreState(savedInstanceState) != null;
+        if (!reusedRetainedPage && !restoredState) {
             String requestedUrl = getIntent().getStringExtra(EXTRA_URL);
-            String lastUrl = getSharedPreferences(WEB_PREFS, MODE_PRIVATE)
-                    .getString(KEY_LAST_URL, CHATGPT_URL);
             webView.loadUrl(isSafeChatGptUrl(requestedUrl)
                     ? requestedUrl
-                    : (lastUrl == null ? CHATGPT_URL : lastUrl));
+                    : getResumeUrl(false));
+        } else {
+            verifyRetainedPage();
         }
     }
 
@@ -208,7 +233,7 @@ public class ChatActivity extends Activity {
         LinearLayout errorActions = new LinearLayout(this);
         errorActions.setOrientation(LinearLayout.HORIZONTAL);
         errorActions.setGravity(Gravity.END);
-        errorActions.addView(makeSmallButton("Reintentar", v -> webView.reload()));
+        errorActions.addView(makeSmallButton("Reintentar", v -> retryWebView()));
         errorActions.addView(makeSmallButton("Navegador", v -> openInBrowser()));
         errorActions.addView(makeSmallButton("App oficial", v -> openOfficialApp()));
         errorBar.addView(errorActions, new LinearLayout.LayoutParams(
@@ -220,7 +245,7 @@ public class ChatActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        FrameLayout webContainer = new FrameLayout(this);
+        webContainer = new FrameLayout(this);
         webContainer.setBackgroundColor(COLOR_WEB_BACKGROUND);
         if (safeWebViewMode) {
             reusedRetainedPage = false;
@@ -231,16 +256,7 @@ public class ChatActivity extends Activity {
             persistentWebViewManaged = true;
             webView = PersistentWebViewStore.acquire(this);
         }
-        webView.setBackgroundColor(COLOR_WEB_BACKGROUND);
-        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        webView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
-        }
-        webContainer.addView(webView, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-        ));
+        attachWebViewToContainer();
         root.addView(webContainer, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
@@ -273,10 +289,19 @@ public class ChatActivity extends Activity {
     }
 
     private void configureWebView() {
-        WebSettings settings = webView.getSettings();
+        applyBaseWebViewSettings(webView);
+        webView.setWebViewClient(Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new ChatWebViewClientO()
+                : new ChatWebViewClient());
+        webView.setWebChromeClient(new ChatWebChromeClient());
+        webView.setDownloadListener(new ChatDownloadListener());
+    }
+
+    /** Ajustes compartidos por el panel visible y la precarga en segundo plano. */
+    static void applyBaseWebViewSettings(WebView targetWebView) {
+        WebSettings settings = targetWebView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
         settings.setAllowContentAccess(true);
         settings.setAllowFileAccess(false);
         settings.setSupportZoom(true);
@@ -286,10 +311,16 @@ public class ChatActivity extends Activity {
         settings.setUseWideViewPort(true);
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setSaveFormData(false);
+        settings.setLoadsImagesAutomatically(true);
+        settings.setBlockNetworkImage(false);
+        settings.setBlockNetworkLoads(false);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        settings.setSupportMultipleWindows(false);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            settings.setOffscreenPreRaster(true);
+            // ChatGPT es una SPA pesada. Prerasterizarla oculta duplica memoria y puede
+            // hacer que Android mate su renderizador en telefonos con poca RAM.
+            settings.setOffscreenPreRaster(false);
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -298,9 +329,6 @@ public class ChatActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             settings.setSafeBrowsingEnabled(true);
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            settings.setForceDark(WebSettings.FORCE_DARK_ON);
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             WebView.setWebContentsDebuggingEnabled(false);
         }
@@ -308,12 +336,202 @@ public class ChatActivity extends Activity {
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            cookies.setAcceptThirdPartyCookies(webView, true);
+            cookies.setAcceptThirdPartyCookies(targetWebView, true);
+        }
+    }
+
+    private void attachWebViewToContainer() {
+        if (webView == null || webContainer == null) return;
+        ViewGroup parent = (ViewGroup) webView.getParent();
+        if (parent != null) parent.removeView(webView);
+        webContainer.removeAllViews();
+
+        webView.setBackgroundColor(COLOR_WEB_BACKGROUND);
+        // La ventana ya tiene aceleracion grafica. Una capa permanente aparte solo reserva
+        // otra textura GPU; LAYER_TYPE_NONE deja que WebView componga cada cuadro normalmente.
+        webView.setLayerType(View.LAYER_TYPE_NONE, null);
+        webView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
+        }
+        webContainer.addView(webView, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+    }
+
+    private String getResumeUrl(boolean allowCurrentWebView) {
+        if (allowCurrentWebView && webView != null) {
+            try {
+                String currentUrl = webView.getUrl();
+                if (isSafeChatGptUrl(currentUrl)) return currentUrl;
+            } catch (RuntimeException ignored) {
+            }
         }
 
-        webView.setWebViewClient(new ChatWebViewClient());
-        webView.setWebChromeClient(new ChatWebChromeClient());
-        webView.setDownloadListener(new ChatDownloadListener());
+        return getLastSafeChatUrl(this);
+    }
+
+    static String getLastSafeChatUrl(Context context) {
+        String lastUrl = context.getSharedPreferences(WEB_PREFS, MODE_PRIVATE)
+                .getString(KEY_LAST_URL, CHATGPT_URL);
+        return isSafeChatGptUrl(lastUrl) ? lastUrl : CHATGPT_URL;
+    }
+
+    private void retryWebView() {
+        recreateWebView("Panel web reiniciado", true);
+    }
+
+    private void recreateWebView(String notice, boolean clearHttpCache) {
+        replaceWebView(webView, false, getResumeUrl(true), notice, clearHttpCache);
+    }
+
+    private void recoverAfterRendererGone(WebView failedWebView, boolean didCrash) {
+        String notice = didCrash
+                ? "El motor web fallo y se recupero automaticamente"
+                : "Android libero el motor web; la pagina se restauro";
+        replaceWebView(failedWebView, true, getResumeUrl(false), notice, false);
+    }
+
+    private void replaceWebView(
+            WebView previousWebView,
+            boolean rendererGone,
+            String resumeUrl,
+            String notice,
+            boolean clearHttpCache
+    ) {
+        if (recoveringWebView || isFinishing()) return;
+        recoveringWebView = true;
+        cancelLoadWatchdog();
+
+        if (webContainer != null && previousWebView != null) {
+            webContainer.removeView(previousWebView);
+        }
+        if (previousWebView != null) {
+            if (clearHttpCache && !rendererGone) {
+                try {
+                    // Repara recursos web obsoletos sin borrar cookies, cuenta ni historial.
+                    previousWebView.clearCache(true);
+                } catch (RuntimeException ignored) {
+                }
+            }
+            if (rendererGone) {
+                if (persistentWebViewManaged) {
+                    PersistentWebViewStore.discardAfterRendererGone(previousWebView);
+                } else {
+                    try {
+                        previousWebView.destroy();
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            } else if (persistentWebViewManaged) {
+                PersistentWebViewStore.destroy(previousWebView);
+            } else {
+                try {
+                    previousWebView.stopLoading();
+                    previousWebView.destroy();
+                } catch (RuntimeException ignored) {
+                }
+            }
+        }
+
+        webView = null;
+        pageCommitted = false;
+        try {
+            webView = persistentWebViewManaged
+                    ? PersistentWebViewStore.acquire(this)
+                    : new WebView(this);
+            attachWebViewToContainer();
+            configureWebView();
+            webView.loadUrl(isSafeChatGptUrl(resumeUrl) ? resumeUrl : CHATGPT_URL);
+            if (notice != null && !notice.isEmpty()) {
+                Toast.makeText(this, notice, Toast.LENGTH_SHORT).show();
+            }
+        } catch (RuntimeException error) {
+            showWebError(
+                    "No se pudo iniciar Android System WebView. Actualiza Chrome/WebView y reintenta."
+            );
+        } finally {
+            recoveringWebView = false;
+        }
+    }
+
+    private void scheduleLoadWatchdog() {
+        cancelLoadWatchdog();
+        pageCommitted = false;
+        final int generation = ++loadGeneration;
+        loadWatchdog = () -> {
+            if (generation != loadGeneration || webView == null || pageCommitted || isFinishing()) {
+                return;
+            }
+            if (automaticRecoveryCount == 0) {
+                automaticRecoveryCount = 1;
+                recreateWebView("La carga se bloqueo; el panel se reinicio automaticamente", false);
+            } else {
+                showWebError(
+                        "ChatGPT no respondio en 30 segundos. Comprueba Internet y pulsa Reintentar."
+                );
+            }
+        };
+        mainHandler.postDelayed(loadWatchdog, LOAD_STALL_TIMEOUT_MS);
+    }
+
+    private void verifyRetainedPage() {
+        if (webView == null) return;
+        final WebView candidate = webView;
+        final boolean[] answered = {false};
+        Runnable timeout = () -> {
+            if (!answered[0] && candidate == webView && !isFinishing()) {
+                automaticRecoveryCount = 1;
+                recreateWebView("La pagina guardada no respondia y fue restaurada", false);
+            }
+        };
+        mainHandler.postDelayed(timeout, 4_000L);
+        try {
+            candidate.evaluateJavascript("document.readyState", value -> {
+                answered[0] = true;
+                mainHandler.removeCallbacks(timeout);
+                if (candidate != webView || isFinishing()) return;
+                if (value == null || "null".equals(value)) {
+                    recreateWebView("La pagina guardada estaba vacia y fue restaurada", false);
+                } else if ("\"loading\"".equals(value)
+                        || PersistentWebViewStore.isLoadInProgress(candidate)) {
+                    scheduleLoadWatchdog();
+                } else {
+                    markPageResponsive();
+                    try {
+                        applyFastUiTuning(candidate, candidate.getUrl());
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+            });
+        } catch (RuntimeException error) {
+            answered[0] = true;
+            mainHandler.removeCallbacks(timeout);
+            recreateWebView("La pagina guardada estaba bloqueada y fue restaurada", false);
+        }
+    }
+
+    private void markPageResponsive() {
+        pageCommitted = true;
+        automaticRecoveryCount = 0;
+        cancelLoadWatchdog();
+    }
+
+    private void applyFastUiTuning(WebView view, String url) {
+        if (view == null || view != webView || !isSafeChatGptUrl(url)) return;
+        try {
+            view.evaluateJavascript(FAST_UI_SCRIPT, null);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void cancelLoadWatchdog() {
+        loadGeneration++;
+        if (loadWatchdog != null) {
+            mainHandler.removeCallbacks(loadWatchdog);
+            loadWatchdog = null;
+        }
     }
 
     private Button makeHeaderButton(String text, String description, View.OnClickListener listener) {
@@ -352,6 +570,7 @@ public class ChatActivity extends Activity {
         menu.getMenu().add(0, 3, 2, "Abrir en navegador");
         menu.getMenu().add(0, 4, 3, "Copiar enlace del chat");
         menu.getMenu().add(0, 5, 4, "Volver al inicio");
+        menu.getMenu().add(0, 6, 5, "Reiniciar panel web");
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
                 case 1:
@@ -368,6 +587,9 @@ public class ChatActivity extends Activity {
                     return true;
                 case 5:
                     webView.loadUrl(CHATGPT_URL);
+                    return true;
+                case 6:
+                    recreateWebView("Panel web reiniciado", true);
                     return true;
                 default:
                     return false;
@@ -512,7 +734,7 @@ public class ChatActivity extends Activity {
         }
     }
 
-    private boolean isSafeChatGptUrl(String url) {
+    static boolean isSafeChatGptUrl(String url) {
         if (url == null) return false;
         Uri uri = Uri.parse(url);
         String host = uri.getHost();
@@ -681,6 +903,8 @@ public class ChatActivity extends Activity {
     @Override
     protected void onDestroy() {
         isVisible = false;
+        cancelLoadWatchdog();
+        mainHandler.removeCallbacksAndMessages(null);
         if (fileCallback != null) {
             fileCallback.onReceiveValue(null);
             fileCallback = null;
@@ -691,14 +915,14 @@ public class ChatActivity extends Activity {
         }
         if (webView != null) {
             CookieManager.getInstance().flush();
-            webView.setWebChromeClient(null);
-            webView.setWebViewClient(null);
-            webView.setDownloadListener(null);
             if (persistentWebViewManaged && BubbleService.isRunning) {
                 PersistentWebViewStore.release(getApplicationContext());
             } else if (persistentWebViewManaged) {
                 PersistentWebViewStore.destroy(webView);
             } else {
+                webView.setWebChromeClient(null);
+                webView.setWebViewClient(null);
+                webView.setDownloadListener(null);
                 webView.stopLoading();
                 webView.destroy();
             }
@@ -836,12 +1060,24 @@ public class ChatActivity extends Activity {
         @Override
         public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
             hideWebError();
+            PersistentWebViewStore.markLoadStarted(view);
+            scheduleLoadWatchdog();
             super.onPageStarted(view, url, favicon);
         }
 
         @Override
+        public void onPageCommitVisible(WebView view, String url) {
+            markPageResponsive();
+            PersistentWebViewStore.markLoadFinished(view);
+            applyFastUiTuning(view, url);
+            super.onPageCommitVisible(view, url);
+        }
+
+        @Override
         public void onPageFinished(WebView view, String url) {
-            CookieManager.getInstance().flush();
+            markPageResponsive();
+            PersistentWebViewStore.markLoadFinished(view);
+            applyFastUiTuning(view, url);
             Uri uri = Uri.parse(url);
             String host = uri.getHost();
             if (host != null && (host.equals("chatgpt.com") || host.endsWith(".chatgpt.com"))) {
@@ -857,6 +1093,8 @@ public class ChatActivity extends Activity {
         @Override
         public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
             if (request.isForMainFrame()) {
+                cancelLoadWatchdog();
+                PersistentWebViewStore.markLoadFinished(view);
                 showWebError("No se pudo cargar ChatGPT: " + error.getDescription());
             }
             super.onReceivedError(view, request, error);
@@ -869,12 +1107,35 @@ public class ChatActivity extends Activity {
                 WebResourceResponse errorResponse
         ) {
             if (request.isForMainFrame() && errorResponse.getStatusCode() >= 400) {
+                cancelLoadWatchdog();
+                PersistentWebViewStore.markLoadFinished(view);
                 showWebError(
                         "ChatGPT devolvió el error " + errorResponse.getStatusCode()
                                 + ". Prueba el navegador o la app oficial."
                 );
             }
             super.onReceivedHttpError(view, request, errorResponse);
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.O)
+    private final class ChatWebViewClientO extends ChatWebViewClient {
+        @Override
+        public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+            if (view != webView || isFinishing()) {
+                if (persistentWebViewManaged) {
+                    PersistentWebViewStore.discardAfterRendererGone(view);
+                } else {
+                    try {
+                        view.destroy();
+                    } catch (RuntimeException ignored) {
+                    }
+                }
+                if (view == webView) webView = null;
+                return true;
+            }
+            recoverAfterRendererGone(view, detail.didCrash());
+            return true;
         }
     }
 
