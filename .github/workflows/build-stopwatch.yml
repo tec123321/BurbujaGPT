@@ -42,6 +42,9 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
+      - name: Apply layout hotfix
+        run: python3 stopwatch/apply_layout_hotfix.py
+
       - name: Build debug APK
         run: gradle :stopwatch:assembleDebug --stacktrace
 
@@ -49,7 +52,7 @@ jobs:
         id: apk_upload
         uses: actions/upload-artifact@v4
         with:
-          name: Cronometro-Lateral-v1.4-debug-apk
+          name: Cronometro-Lateral-v1.5-debug-apk
           path: stopwatch/build/outputs/apk/debug/stopwatch-debug.apk
 
   report:
