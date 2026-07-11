@@ -10,7 +10,7 @@ android {
         applicationId 'com.leonardo.edgestopwatch'
         minSdk 23
         targetSdk 33
-        versionCode 5
-        versionName '1.4-interval-marks-multi-timers'
+        versionCode 6
+        versionName '1.5-layout-fix-wide-marks'
     }
 }
