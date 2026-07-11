@@ -10,7 +10,7 @@ android {
         applicationId 'com.leonardo.edgestopwatch'
         minSdk 23
         targetSdk 33
-        versionCode 3
-        versionName '1.2-compact-status-bar'
+        versionCode 4
+        versionName '1.3-double-tap-trash-target'
     }
 }
