@@ -72,7 +72,7 @@ public class ShizukuLaunchActivity extends Activity {
             }
 
             Rect bounds = calculatePopupBounds();
-            int userId = Process.myUserHandle().getIdentifier();
+            int userId = Math.max(0, Process.myUid() / 100000);
             String flattened = component.flattenToShortString();
 
             new Thread(() -> {
@@ -92,10 +92,10 @@ public class ShizukuLaunchActivity extends Activity {
 
                 int finalResult = result;
                 runOnUiThread(() -> {
-                    if (finalResult != 0) {
-                        fallbackOpen("One UI rechazó el modo ventana solicitado por Shizuku");
-                    } else {
+                    if (finalResult == 0) {
                         finishBridge();
+                    } else {
+                        fallbackOpen("One UI rechazó el modo ventana solicitado por Shizuku");
                     }
                 });
             }, "shizuku-popup-launch").start();
@@ -115,7 +115,6 @@ public class ShizukuLaunchActivity extends Activity {
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener);
         Shizuku.addBinderDeadListener(binderDeadListener);
         Shizuku.addRequestPermissionResultListener(permissionResultListener);
-
         handler.postDelayed(this::continueLaunch, 250);
     }
 
@@ -231,8 +230,7 @@ public class ShizukuLaunchActivity extends Activity {
         int width = Math.min(screenWidth - margin * 2, dp(430));
         int height = Math.min(screenHeight - top - bottomMargin, dp(720));
         int left = Math.max(margin, (screenWidth - width) / 2);
-        int upper = Math.max(dp(32), top);
-        return new Rect(left, upper, left + width, upper + height);
+        return new Rect(left, top, left + width, top + height);
     }
 
     private boolean isPackageInstalled(String packageName) {
@@ -263,10 +261,13 @@ public class ShizukuLaunchActivity extends Activity {
                     Uri.parse("market://details?id=" + SHIZUKU_PACKAGE)
             ));
         } catch (ActivityNotFoundException error) {
-            startActivity(new Intent(
-                    Intent.ACTION_VIEW,
-                    Uri.parse("https://play.google.com/store/apps/details?id=" + SHIZUKU_PACKAGE)
-            ));
+            try {
+                startActivity(new Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse("https://play.google.com/store/apps/details?id=" + SHIZUKU_PACKAGE)
+                ));
+            } catch (RuntimeException ignored) {
+            }
         }
     }
 
