@@ -2,10 +2,6 @@ package com.leonardo.burbujagpt;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.NotificationManager;
-import android.content.ClipData;
-import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -18,35 +14,38 @@ import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.webkit.CookieManager;
-import android.webkit.WebStorage;
 import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+/**
+ * Lanzador ligero: mantiene la app oficial de ChatGPT instalada y usa una burbuja
+ * propia para abrirla o traerla al frente solicitando vista libre/emergente.
+ */
 public class MainActivity extends Activity {
-    private static final int NOTIFICATION_PERMISSION_REQUEST = 1002;
-    private static final int COLOR_BACKGROUND = 0xFF09090B;
-    private static final int COLOR_CARD = 0xFF18181B;
-    private static final int COLOR_TEXT = 0xFFF4F4F5;
-    private static final int COLOR_MUTED = 0xFFA1A1AA;
-    private static final int COLOR_SUBTLE = 0xFFD4D4D8;
-    private static final int COLOR_BORDER = 0xFF3F3F46;
-    private static final int COLOR_BUTTON = 0xFF27272A;
-    private static final int COLOR_PRIMARY = 0xFF2563EB;
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 1101;
+    private static final int BACKGROUND = 0xFF050505;
+    private static final int CARD = 0xFF171717;
+    private static final int BORDER = 0xFF343434;
+    private static final int TEXT = 0xFFF5F5F5;
+    private static final int MUTED = 0xFFA3A3A3;
+    private static final int PRIMARY = 0xFF2563EB;
+
+    private static volatile MainActivity visibleInstance;
 
     private TextView statusView;
-    private Button permissionButton;
-    private static volatile MainActivity visibleInstance;
+    private Button activateButton;
+    private boolean awaitingOverlayPermission;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        getWindow().setStatusBarColor(Color.BLACK);
+        getWindow().setNavigationBarColor(Color.BLACK);
+        AppPreferences.setMode(this, AppPreferences.MODE_OFFICIAL);
         setContentView(buildUi());
     }
 
@@ -55,6 +54,11 @@ public class MainActivity extends Activity {
         super.onResume();
         visibleInstance = this;
         updateStatus();
+
+        if (awaitingOverlayPermission && canDrawOverlays()) {
+            awaitingOverlayPermission = false;
+            requestNotificationOrActivate();
+        }
     }
 
     @Override
@@ -73,20 +77,17 @@ public class MainActivity extends Activity {
     private View buildUi() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
-        scroll.setBackgroundColor(COLOR_BACKGROUND);
+        scroll.setBackgroundColor(BACKGROUND);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(20), dp(26), dp(20), dp(30));
+        root.setPadding(dp(20), dp(28), dp(20), dp(32));
         scroll.addView(root, new ScrollView.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        TextView orb = new TextView(this);
-        orb.setText("✦");
-        orb.setTextSize(32);
-        orb.setTextColor(Color.WHITE);
+        TextView orb = makeText("✦", 34, Color.WHITE, true);
         orb.setGravity(Gravity.CENTER);
         GradientDrawable orbBackground = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
@@ -94,414 +95,156 @@ public class MainActivity extends Activity {
         );
         orbBackground.setShape(GradientDrawable.OVAL);
         orb.setBackground(orbBackground);
-        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(dp(72), dp(72));
+        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(dp(76), dp(76));
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = makeText("BurbujaGPT V8", 28, COLOR_TEXT, true);
+        TextView title = makeText("Globo GPT V11", 28, TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
-        titleParams.setMargins(0, dp(13), 0, 0);
+        titleParams.setMargins(0, dp(14), 0, 0);
         root.addView(title, titleParams);
 
         TextView subtitle = makeText(
-                "Globo configurable con tus chats reales de ChatGPT",
-                16,
-                COLOR_MUTED,
+                "Burbuja para la aplicación oficial de ChatGPT",
+                15,
+                MUTED,
                 false
         );
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = matchWrap();
-        subtitleParams.setMargins(0, dp(7), 0, dp(18));
+        subtitleParams.setMargins(0, dp(6), 0, dp(18));
         root.addView(subtitle, subtitleParams);
 
-        LinearLayout infoCard = makeCard();
-        infoCard.addView(makeText(
-                "Ahora incluye una burbuja reconocida por Android. El panel conserva la misma pagina mientras el servicio esta activo. Para cuentas iniciadas con Google, el acceso incrustado sigue bloqueado por Google: usa correo y contrasena, la app oficial o el navegador.",
+        LinearLayout explanation = makeCard();
+        explanation.addView(makeText(
+                "Usa la aplicación oficial, por lo que conserva tu inicio con Google, Plus, historial, voz y funciones nativas. Al tocar el globo, intenta abrir o recuperar ChatGPT en la vista emergente de Samsung.",
                 14,
-                COLOR_TEXT,
+                TEXT,
                 false
         ), matchWrap());
-        TextView gestureHelp = makeText(
-                "Toca: abrir · Mantén pulsado: ajustes · Arrastra: mover · Arrastra hacia ×: apagar",
+        TextView limit = makeText(
+                "Samsung controla el modo de ventana. Si One UI rechaza la vista emergente, ChatGPT se abrirá normalmente; no se modifica ni se clona su APK.",
                 12,
-                COLOR_MUTED,
+                MUTED,
                 false
         );
-        LinearLayout.LayoutParams gestureParams = matchWrap();
-        gestureParams.setMargins(0, dp(8), 0, 0);
-        infoCard.addView(gestureHelp, gestureParams);
-        root.addView(infoCard, cardParams());
+        LinearLayout.LayoutParams limitParams = matchWrap();
+        limitParams.setMargins(0, dp(10), 0, 0);
+        explanation.addView(limit, limitParams);
+        root.addView(explanation, cardParams());
 
-        String lastNativeError = AppPreferences.getLastNativeError(this);
-        if (lastNativeError != null && !lastNativeError.trim().isEmpty()) {
-            LinearLayout diagnosticCard = makeCard();
-            diagnosticCard.addView(makeText(
-                    "Samsung rechazo el ultimo intento de burbuja nativa",
-                    16,
-                    0xFFFCA5A5,
-                    true
-            ), matchWrap());
-            TextView diagnosticText = makeText(
-                    summarizeDiagnostic(lastNativeError),
-                    12,
-                    COLOR_SUBTLE,
-                    false
-            );
-            LinearLayout.LayoutParams diagnosticParams = matchWrap();
-            diagnosticParams.setMargins(0, dp(7), 0, 0);
-            diagnosticCard.addView(diagnosticText, diagnosticParams);
-            diagnosticCard.addView(makeButton(
-                    "Copiar diagnostico",
-                    false,
-                    v -> copyNativeDiagnostic()
-            ), compactButtonParams());
-            diagnosticCard.addView(makeButton(
-                    "Limpiar y reintentar modo nativo",
-                    false,
-                    v -> retryNativeBubble()
-            ), compactButtonParams());
-            root.addView(diagnosticCard, cardParams());
-        }
+        statusView = makeText("", 14, TEXT, true);
+        root.addView(statusView, cardParams());
 
-        LinearLayout modeCard = makeCard();
-        modeCard.addView(makeText("Al tocar el globo", 17, COLOR_TEXT, true), matchWrap());
-
-        RadioGroup modeGroup = new RadioGroup(this);
-        modeGroup.setOrientation(RadioGroup.VERTICAL);
-
-        boolean nativeSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R;
-        RadioButton nativeMode = makeRadio(
-                nativeSupported
-                        ? "Burbuja nativa de Android — mantiene el panel y la pagina"
-                        : "Burbuja nativa — requiere Android 11 o posterior",
-                AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this))
-        );
-        nativeMode.setId(103);
-        nativeMode.setEnabled(nativeSupported);
-        modeGroup.addView(nativeMode);
-
-        String officialLabel = OfficialChatLauncher.isOfficialAppInstalled(this)
-                ? "App oficial emergente — recomendada y con todos tus chats"
-                : "App oficial emergente — ChatGPT no está instalada";
-        RadioButton officialMode = makeRadio(
-                officialLabel,
-                AppPreferences.MODE_OFFICIAL.equals(AppPreferences.getMode(this))
-        );
-        officialMode.setId(101);
-        modeGroup.addView(officialMode);
-
-        RadioButton browserMode = makeRadio(
-                "Navegador emergente — usa tu sesión de Brave o Chrome",
-                AppPreferences.MODE_BROWSER.equals(AppPreferences.getMode(this))
-        );
-        browserMode.setId(102);
-        modeGroup.addView(browserMode);
-
-        RadioButton webMode = makeRadio(
-                "Panel web interno — solo correo/contraseña, Google lo bloquea",
-                AppPreferences.MODE_WEB.equals(AppPreferences.getMode(this))
-        );
-        webMode.setId(100);
-        modeGroup.addView(webMode);
-
-        modeGroup.setOnCheckedChangeListener((group, checkedId) -> {
-            String mode = checkedId == 103
-                    ? AppPreferences.MODE_NATIVE
-                    : checkedId == 101
-                    ? AppPreferences.MODE_OFFICIAL
-                    : checkedId == 102 ? AppPreferences.MODE_BROWSER : AppPreferences.MODE_WEB;
-            if (checkedId == 103) AppPreferences.clearNativeError(this);
-            AppPreferences.setMode(this, mode);
-            updateStatus();
-            restartRunningBubbleForModeChange();
-        });
-        modeCard.addView(modeGroup, matchWrap());
-
-        modeCard.addView(makeButton(
-                "Configurar burbujas de Android / Samsung",
+        activateButton = makeButton("Activar globo", true, v -> beginActivation());
+        root.addView(activateButton, buttonParams());
+        root.addView(makeButton(
+                "Probar ventana emergente ahora",
                 false,
-                v -> openNativeBubbleSettings()
-        ), compactButtonParams());
-        modeCard.addView(makeButton(
-                "Reintentar burbuja nativa",
+                v -> testOfficialPopup()
+        ), buttonParams());
+        root.addView(makeButton(
+                "Desactivar globo",
                 false,
-                v -> retryNativeBubble()
-        ), compactButtonParams());
+                v -> stopBubble()
+        ), buttonParams());
 
-        modeCard.addView(makeButton(
-                "Probar app oficial emergente",
-                false,
-                v -> testOfficialFloatingMode()
-        ), compactButtonParams());
-        modeCard.addView(makeButton(
-                "Probar navegador emergente",
-                false,
-                v -> testBrowserFloatingMode()
-        ), compactButtonParams());
-        modeCard.addView(makeButton(
-                "Probar panel web interno",
-                false,
-                v -> openFloatingChat()
-        ), compactButtonParams());
-        root.addView(modeCard, cardParams());
-
-        LinearLayout appearanceCard = makeCard();
-        appearanceCard.addView(makeText("Aspecto del globo", 17, COLOR_TEXT, true), matchWrap());
+        LinearLayout appearance = makeCard();
+        appearance.addView(makeText("Aspecto del globo", 17, TEXT, true), matchWrap());
 
         TextView sizeLabel = makeText(
                 "Tamaño: " + AppPreferences.getBubbleSize(this) + " dp",
                 13,
-                COLOR_SUBTLE,
+                MUTED,
                 false
         );
-        appearanceCard.addView(sizeLabel, labelParams());
+        LinearLayout.LayoutParams labelParams = matchWrap();
+        labelParams.setMargins(0, dp(12), 0, 0);
+        appearance.addView(sizeLabel, labelParams);
+
         SeekBar sizeSeek = new SeekBar(this);
         sizeSeek.setMax(36);
         sizeSeek.setProgress(AppPreferences.getBubbleSize(this) - 48);
-        sizeSeek.setOnSeekBarChangeListener(new SimpleSeekListener() {
+        sizeSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int value = 48 + progress;
                 sizeLabel.setText("Tamaño: " + value + " dp");
                 if (fromUser) {
                     AppPreferences.setBubbleSize(MainActivity.this, value);
-                    refreshRunningBubble();
+                    refreshBubble();
                 }
             }
+
+            @Override public void onStartTrackingTouch(SeekBar seekBar) { }
+            @Override public void onStopTrackingTouch(SeekBar seekBar) { }
         });
-        appearanceCard.addView(sizeSeek, matchWrap());
+        appearance.addView(sizeSeek, matchWrap());
 
         TextView opacityLabel = makeText(
                 "Opacidad: " + AppPreferences.getBubbleOpacity(this) + "%",
                 13,
-                COLOR_SUBTLE,
+                MUTED,
                 false
         );
-        appearanceCard.addView(opacityLabel, labelParams());
+        appearance.addView(opacityLabel, labelParams);
+
         SeekBar opacitySeek = new SeekBar(this);
         opacitySeek.setMax(55);
         opacitySeek.setProgress(AppPreferences.getBubbleOpacity(this) - 45);
-        opacitySeek.setOnSeekBarChangeListener(new SimpleSeekListener() {
+        opacitySeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 int value = 45 + progress;
                 opacityLabel.setText("Opacidad: " + value + "%");
                 if (fromUser) {
                     AppPreferences.setBubbleOpacity(MainActivity.this, value);
-                    refreshRunningBubble();
+                    refreshBubble();
                 }
             }
+
+            @Override public void onStartTrackingTouch(SeekBar seekBar) { }
+            @Override public void onStopTrackingTouch(SeekBar seekBar) { }
         });
-        appearanceCard.addView(opacitySeek, matchWrap());
+        appearance.addView(opacitySeek, matchWrap());
+        root.addView(appearance, cardParams());
 
-        appearanceCard.addView(makeText("Tamaño inicial del panel", 13, COLOR_SUBTLE, false), labelParams());
-        RadioGroup panelGroup = new RadioGroup(this);
-        panelGroup.setOrientation(RadioGroup.HORIZONTAL);
-        int currentPanelSize = AppPreferences.getPanelSize(this);
-        RadioButton compact = makeRadio("Compacto", currentPanelSize == AppPreferences.PANEL_COMPACT);
-        compact.setId(200);
-        RadioButton large = makeRadio("Grande", currentPanelSize == AppPreferences.PANEL_LARGE);
-        large.setId(201);
-        RadioButton full = makeRadio("Completo", currentPanelSize == AppPreferences.PANEL_FULL);
-        full.setId(202);
-        panelGroup.addView(compact, new RadioGroup.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        panelGroup.addView(large, new RadioGroup.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        panelGroup.addView(full, new RadioGroup.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        panelGroup.setOnCheckedChangeListener((group, checkedId) -> {
-            int size = checkedId == 200
-                    ? AppPreferences.PANEL_COMPACT
-                    : checkedId == 202 ? AppPreferences.PANEL_FULL : AppPreferences.PANEL_LARGE;
-            AppPreferences.setPanelSize(this, size);
-        });
-        appearanceCard.addView(panelGroup, matchWrap());
-        root.addView(appearanceCard, cardParams());
-
-        statusView = makeText("", 14, COLOR_SUBTLE, true);
-        LinearLayout.LayoutParams statusParams = matchWrap();
-        statusParams.setMargins(0, dp(8), 0, dp(8));
-        root.addView(statusView, statusParams);
-
-        permissionButton = makeButton("1. Permitir globo flotante", true, v -> requestRequiredPermission());
-        root.addView(permissionButton, buttonParams());
-        root.addView(makeButton("2. Activar globo", true, v -> startBubble()), buttonParams());
-        root.addView(makeButton("Desactivar globo", false, v -> stopBubble()), buttonParams());
-        root.addView(makeButton("Cerrar sesión del panel web", false, v -> confirmClearWebSession()), buttonParams());
-
-        TextView footer = makeText(
-                "En Samsung activa Ajustes > Notificaciones > Ajustes avanzados > Notificaciones flotantes > Burbujas. Android puede cerrar cualquier proceso bajo presion extrema de memoria, pero el servicio mantiene el WebView vivo en condiciones normales.",
+        TextView help = makeText(
+                "Toca el globo para abrir ChatGPT. Mantén pulsado para volver a esta pantalla. Arrástralo hacia la × para apagarlo.",
                 12,
-                COLOR_MUTED,
+                MUTED,
                 false
         );
-        footer.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams footerParams = matchWrap();
-        footerParams.setMargins(0, dp(16), 0, 0);
-        root.addView(footer, footerParams);
+        help.setGravity(Gravity.CENTER);
+        root.addView(help, matchWrap());
 
         return scroll;
     }
 
-    private void updateStatus() {
-        boolean overlayGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
-                || Settings.canDrawOverlays(this);
-        String selectedMode = AppPreferences.getMode(this);
-        boolean nativeMode = AppPreferences.MODE_NATIVE.equals(selectedMode);
-        boolean nativeFallback = nativeMode && AppPreferences.isNativeFallbackRequired(this);
-        boolean notificationsGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
-                || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                == PackageManager.PERMISSION_GRANTED;
-        boolean bubblesAllowed = true;
-        if (nativeMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            NotificationManager manager = getSystemService(NotificationManager.class);
-            bubblesAllowed = manager != null && manager.areBubblesAllowed();
-        }
-        String mode = nativeMode
-                ? "burbuja nativa"
-                : AppPreferences.MODE_OFFICIAL.equals(selectedMode)
-                ? "app oficial"
-                : AppPreferences.MODE_BROWSER.equals(selectedMode) ? "navegador" : "panel web";
+    private void beginActivation() {
+        AppPreferences.setMode(this, AppPreferences.MODE_OFFICIAL);
 
-        if (statusView != null) {
-            if (nativeFallback) {
-                statusView.setText("Estado: Samsung rechazo el modo nativo · Respaldo compatible activo");
-                statusView.setTextColor(0xFFFBBF24);
-            } else if (nativeMode && Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-                statusView.setText("Estado: la burbuja nativa requiere Android 11 o posterior");
-                statusView.setTextColor(0xFFFBBF24);
-            } else if (nativeMode && !notificationsGranted) {
-                statusView.setText("Estado: falta permitir notificaciones para crear la burbuja");
-                statusView.setTextColor(0xFFFBBF24);
-            } else if (nativeMode && !bubblesAllowed) {
-                statusView.setText("Estado: activa Burbujas en los ajustes de notificaciones");
-                statusView.setTextColor(0xFFFBBF24);
-            } else if (!nativeMode && !overlayGranted) {
-                statusView.setText("Estado: falta permitir Aparecer encima");
-                statusView.setTextColor(0xFFFBBF24);
-            } else {
-                statusView.setText(
-                        "Estado: listo · Globo "
-                                + (BubbleService.isRunning ? "activo" : "apagado")
-                                + " · Modo " + mode
-                );
-                statusView.setTextColor(BubbleService.isRunning ? 0xFF34D399 : COLOR_SUBTLE);
-            }
-        }
-        if (permissionButton != null) {
-            if (nativeMode) {
-                permissionButton.setText("1. Configurar burbujas del sistema");
-            } else {
-                permissionButton.setText(overlayGranted
-                        ? "1. Permiso concedido"
-                        : "1. Permitir globo flotante");
-            }
-        }
-    }
-
-    private void requestRequiredPermission() {
-        if (AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this))) {
-            openNativeBubbleSettings();
-        } else {
-            requestOverlayPermission();
-        }
-    }
-
-    private void requestOverlayPermission() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "El permiso ya está concedido", Toast.LENGTH_SHORT).show();
+        if (!OfficialChatLauncher.isOfficialAppInstalled(this)) {
+            Toast.makeText(this, "La aplicación oficial de ChatGPT no está instalada", Toast.LENGTH_LONG).show();
+            openChatGptStorePage();
             return;
         }
 
-        Intent intent = new Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:" + getPackageName())
-        );
-        startActivity(intent);
-    }
-
-    private void startBubble() {
-        boolean nativeMode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
-                && AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this));
-        boolean needsOverlay = !nativeMode || AppPreferences.isNativeFallbackRequired(this);
-        if (needsOverlay
-                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                && !Settings.canDrawOverlays(this)) {
-            requestOverlayPermission();
+        if (!canDrawOverlays()) {
+            awaitingOverlayPermission = true;
+            Intent permission = new Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName())
+            );
+            startActivity(permission);
             return;
         }
 
-        if (!requestNotificationPermissionIfNeeded()) return;
-        launchBubbleService();
-        Toast.makeText(
-                this,
-                nativeMode ? "Solicitando burbuja nativa..." : "Globo activado",
-                Toast.LENGTH_SHORT
-        ).show();
-        statusView.postDelayed(this::updateStatus, 250);
-        statusView.postDelayed(() -> moveTaskToBack(true), 700);
+        requestNotificationOrActivate();
     }
 
-    private void launchBubbleService() {
-        Intent service = new Intent(this, BubbleService.class);
-        service.setAction(BubbleService.ACTION_SHOW_NATIVE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
-        else startService(service);
-    }
-
-    private void retryNativeBubble() {
-        AppPreferences.clearNativeError(this);
-        AppPreferences.setMode(this, AppPreferences.MODE_NATIVE);
-        stopService(new Intent(this, BubbleService.class));
-        if (statusView != null) {
-            statusView.postDelayed(this::startBubble, 300);
-        } else {
-            getWindow().getDecorView().postDelayed(this::startBubble, 300);
-        }
-    }
-
-    private void copyNativeDiagnostic() {
-        String diagnostic = AppPreferences.getLastNativeError(this);
-        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        if (clipboard != null && diagnostic != null) {
-            clipboard.setPrimaryClip(ClipData.newPlainText("BurbujaGPT diagnostico", diagnostic));
-            Toast.makeText(this, "Diagnostico copiado", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private String summarizeDiagnostic(String diagnostic) {
-        String oneLine = diagnostic.replace('\n', ' ').replaceAll("\\s+", " ").trim();
-        return oneLine.length() <= 280 ? oneLine : oneLine.substring(0, 280) + "...";
-    }
-
-    private void stopBubble() {
-        stopService(new Intent(this, BubbleService.class));
-        Toast.makeText(this, "Globo desactivado", Toast.LENGTH_SHORT).show();
-        statusView.postDelayed(this::updateStatus, 200);
-    }
-
-    private void refreshRunningBubble() {
-        if (!BubbleService.isRunning) return;
-        Intent refresh = new Intent(this, BubbleService.class);
-        refresh.setAction(BubbleService.ACTION_REFRESH);
-        startService(refresh);
-    }
-
-    private void restartRunningBubbleForModeChange() {
-        if (!BubbleService.isRunning || statusView == null) return;
-        stopService(new Intent(this, BubbleService.class));
-        statusView.postDelayed(() -> {
-            boolean nativeMode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
-                    && AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this));
-            boolean overlayGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
-                    || Settings.canDrawOverlays(this);
-            if ((nativeMode || overlayGranted) && requestNotificationPermissionIfNeeded()) {
-                launchBubbleService();
-            }
-            statusView.postDelayed(this::updateStatus, 250);
-        }, 220);
-    }
-
-    private boolean requestNotificationPermissionIfNeeded() {
+    private void requestNotificationOrActivate() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
@@ -509,9 +252,89 @@ public class MainActivity extends Activity {
                     new String[]{Manifest.permission.POST_NOTIFICATIONS},
                     NOTIFICATION_PERMISSION_REQUEST
             );
-            return false;
+            return;
         }
-        return true;
+        activateBubble();
+    }
+
+    private void activateBubble() {
+        AppPreferences.setMode(this, AppPreferences.MODE_OFFICIAL);
+        stopService(new Intent(this, BubbleService.class));
+        getWindow().getDecorView().postDelayed(() -> {
+            Intent service = new Intent(this, BubbleService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
+            else startService(service);
+            Toast.makeText(this, "Globo GPT activado", Toast.LENGTH_SHORT).show();
+            updateStatus();
+            getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 450);
+        }, 180);
+    }
+
+    private void stopBubble() {
+        stopService(new Intent(this, BubbleService.class));
+        Toast.makeText(this, "Globo GPT desactivado", Toast.LENGTH_SHORT).show();
+        getWindow().getDecorView().postDelayed(this::updateStatus, 180);
+    }
+
+    private void testOfficialPopup() {
+        if (!OfficialChatLauncher.isOfficialAppInstalled(this)) {
+            Toast.makeText(this, "La aplicación oficial de ChatGPT no está instalada", Toast.LENGTH_LONG).show();
+            openChatGptStorePage();
+            return;
+        }
+        moveTaskToBack(true);
+        if (!OfficialChatLauncher.openOfficialApp(this, true)) {
+            Toast.makeText(this, "Android impidió abrir ChatGPT", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void refreshBubble() {
+        if (!BubbleService.isRunning) return;
+        Intent refresh = new Intent(this, BubbleService.class);
+        refresh.setAction(BubbleService.ACTION_REFRESH);
+        startService(refresh);
+    }
+
+    private void updateStatus() {
+        if (statusView == null || activateButton == null) return;
+
+        boolean installed = OfficialChatLauncher.isOfficialAppInstalled(this);
+        boolean overlay = canDrawOverlays();
+        boolean active = BubbleService.isRunning;
+
+        if (!installed) {
+            statusView.setText("Estado: falta instalar ChatGPT oficial");
+            statusView.setTextColor(0xFFFCA5A5);
+            activateButton.setText("Instalar ChatGPT oficial");
+        } else if (!overlay) {
+            statusView.setText("Estado: falta permitir Aparecer encima");
+            statusView.setTextColor(0xFFFBBF24);
+            activateButton.setText("Permitir globo flotante");
+        } else {
+            statusView.setText(active
+                    ? "Estado: globo activo · modo app oficial"
+                    : "Estado: listo · globo apagado");
+            statusView.setTextColor(active ? 0xFF34D399 : TEXT);
+            activateButton.setText(active ? "Reiniciar globo" : "Activar globo");
+        }
+    }
+
+    private boolean canDrawOverlays() {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this);
+    }
+
+    private void openChatGptStorePage() {
+        try {
+            startActivity(new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("market://details?id=com.openai.chatgpt")
+            ));
+        } catch (Exception ignored) {
+            startActivity(new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://play.google.com/store/apps/details?id=com.openai.chatgpt")
+            ));
+        }
     }
 
     @Override
@@ -519,82 +342,25 @@ public class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != NOTIFICATION_PERMISSION_REQUEST) return;
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            startBubble();
+            activateBubble();
         } else {
             Toast.makeText(
                     this,
-                    "Android necesita notificaciones para mostrar una burbuja nativa",
+                    "Sin notificaciones Android puede ocultar el servicio del globo",
                     Toast.LENGTH_LONG
             ).show();
             updateStatus();
         }
     }
 
-    private void openNativeBubbleSettings() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            Toast.makeText(this, "La burbuja nativa requiere Android 11 o posterior", Toast.LENGTH_LONG).show();
-            return;
-        }
-
-        BubbleService.ensureNativeChannel(this);
-        Intent bubbleSettings = new Intent(Settings.ACTION_APP_NOTIFICATION_BUBBLE_SETTINGS);
-        bubbleSettings.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
-        try {
-            startActivity(bubbleSettings);
-        } catch (Exception ignored) {
-            Intent notificationSettings = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
-            notificationSettings.putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
-            startActivity(notificationSettings);
-        }
-    }
-
-    private void openFloatingChat() {
-        moveTaskToBack(true);
-        Intent intent = new Intent(this, ChatActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        getApplicationContext().startActivity(intent);
-    }
-
-    private void testOfficialFloatingMode() {
-        moveTaskToBack(true);
-        if (!OfficialChatLauncher.openOfficialApp(this, true)) {
-            Toast.makeText(this, "La app oficial de ChatGPT no está instalada", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void testBrowserFloatingMode() {
-        moveTaskToBack(true);
-        if (!OfficialChatLauncher.openBrowser(this, "https://chatgpt.com/", true)) {
-            Toast.makeText(this, "No hay un navegador disponible", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void confirmClearWebSession() {
-        new AlertDialog.Builder(this)
-                .setTitle("¿Cerrar la sesión del panel?")
-                .setMessage("Borrará las cookies y datos locales del panel web. No elimina tus chats de ChatGPT.")
-                .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Cerrar sesión", (dialog, which) -> clearWebSession())
-                .show();
-    }
-
-    private void clearWebSession() {
-        CookieManager.getInstance().removeAllCookies(value -> {
-            CookieManager.getInstance().flush();
-            Toast.makeText(this, "Sesión web eliminada", Toast.LENGTH_SHORT).show();
-        });
-        WebStorage.getInstance().deleteAllData();
-        getSharedPreferences("chat_web_state", MODE_PRIVATE).edit().clear().apply();
-    }
-
     private LinearLayout makeCard() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(dp(15), dp(13), dp(15), dp(13));
+        card.setPadding(dp(16), dp(15), dp(16), dp(15));
         GradientDrawable background = new GradientDrawable();
-        background.setColor(COLOR_CARD);
-        background.setCornerRadius(dp(16));
-        background.setStroke(dp(1), COLOR_BORDER);
+        background.setColor(CARD);
+        background.setCornerRadius(dp(17));
+        background.setStroke(dp(1), BORDER);
         card.setBackground(background);
         return card;
     }
@@ -604,66 +370,39 @@ public class MainActivity extends Activity {
         view.setText(text);
         view.setTextSize(size);
         view.setTextColor(color);
-        view.setLineSpacing(0, 1.12f);
+        view.setLineSpacing(0, 1.14f);
         if (bold) view.setTypeface(Typeface.DEFAULT_BOLD);
         return view;
-    }
-
-    private RadioButton makeRadio(String text, boolean checked) {
-        RadioButton radio = new RadioButton(this);
-        radio.setText(text);
-        radio.setTextSize(13);
-        radio.setTextColor(COLOR_TEXT);
-        radio.setChecked(checked);
-        radio.setPadding(0, dp(3), 0, dp(3));
-        return radio;
     }
 
     private Button makeButton(String text, boolean primary, View.OnClickListener listener) {
         Button button = new Button(this);
         button.setText(text);
         button.setTextSize(14);
-        button.setTextColor(primary ? Color.WHITE : COLOR_TEXT);
+        button.setTextColor(Color.WHITE);
         button.setAllCaps(false);
         button.setGravity(Gravity.CENTER);
-        button.setPadding(dp(12), 0, dp(12), 0);
         button.setOnClickListener(listener);
-
         GradientDrawable background = new GradientDrawable();
-        background.setColor(primary ? COLOR_PRIMARY : COLOR_BUTTON);
-        background.setCornerRadius(dp(13));
-        background.setStroke(dp(1), primary ? COLOR_PRIMARY : COLOR_BORDER);
+        background.setColor(primary ? PRIMARY : 0xFF262626);
+        background.setCornerRadius(dp(14));
+        background.setStroke(dp(1), primary ? PRIMARY : BORDER);
         button.setBackground(background);
         return button;
     }
 
     private LinearLayout.LayoutParams cardParams() {
         LinearLayout.LayoutParams params = matchWrap();
-        params.setMargins(0, 0, 0, dp(12));
-        return params;
-    }
-
-    private LinearLayout.LayoutParams labelParams() {
-        LinearLayout.LayoutParams params = matchWrap();
-        params.setMargins(0, dp(11), 0, 0);
-        return params;
-    }
-
-    private LinearLayout.LayoutParams compactButtonParams() {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(46)
-        );
-        params.setMargins(0, dp(5), 0, 0);
+        params.setMargins(0, 0, 0, dp(13));
         return params;
     }
 
     private LinearLayout.LayoutParams buttonParams() {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(52)
+                dp(54)
         );
-        params.setMargins(0, dp(5), 0, dp(5));
+        params.setMargins(0, 0, 0, dp(10));
         return params;
     }
 
@@ -676,15 +415,5 @@ public class MainActivity extends Activity {
 
     private int dp(int value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
-    }
-
-    private abstract static class SimpleSeekListener implements SeekBar.OnSeekBarChangeListener {
-        @Override
-        public void onStartTrackingTouch(SeekBar seekBar) {
-        }
-
-        @Override
-        public void onStopTrackingTouch(SeekBar seekBar) {
-        }
     }
 }
