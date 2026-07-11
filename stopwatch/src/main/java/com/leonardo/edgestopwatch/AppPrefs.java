@@ -9,8 +9,12 @@ final class AppPrefs {
     static final int THEME_LIGHT = 2;
     static final int THEME_BLUE = 3;
 
+    static final int MIN_PANEL_WIDTH_DP = 180;
+    static final int MAX_PANEL_WIDTH_DP = 360;
+
     private static final String FILE = "edge_stopwatch_prefs";
     private static final String KEY_TEXT_SIZE = "text_size_sp";
+    private static final String KEY_PANEL_WIDTH = "panel_width_dp";
     private static final String KEY_OPACITY = "opacity_percent";
     private static final String KEY_THEME = "theme";
     private static final String KEY_TENTHS = "show_tenths";
@@ -27,6 +31,19 @@ final class AppPrefs {
 
     static void setTextSize(Context context, int value) {
         prefs(context).edit().putInt(KEY_TEXT_SIZE, clamp(value, 16, 36)).apply();
+    }
+
+    static int getPanelWidth(Context context) {
+        return clamp(
+                prefs(context).getInt(KEY_PANEL_WIDTH, 244),
+                MIN_PANEL_WIDTH_DP,
+                MAX_PANEL_WIDTH_DP);
+    }
+
+    static void setPanelWidth(Context context, int value) {
+        prefs(context).edit().putInt(
+                KEY_PANEL_WIDTH,
+                clamp(value, MIN_PANEL_WIDTH_DP, MAX_PANEL_WIDTH_DP)).apply();
     }
 
     static int getOpacity(Context context) {
