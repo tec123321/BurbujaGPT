@@ -76,6 +76,13 @@ public class BubbleService extends Service {
                 && AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this));
         startForegroundNotification();
 
+        String selectedMode = AppPreferences.getMode(this);
+        if (nativeSystemBubble || AppPreferences.MODE_WEB.equals(selectedMode)) {
+            // El servicio ya esta en primer plano: inicializar Chromium ahora reduce el
+            // tiempo del primer toque sin empezar a cargar datos en segundo plano.
+            mainHandler.post(() -> PersistentWebViewStore.warmUp(getApplicationContext()));
+        }
+
         if (nativeSystemBubble && !AppPreferences.isNativeFallbackRequired(this)) {
             if (tryPostNativeBubble()) {
                 scheduleNativeBubbleVerification();
