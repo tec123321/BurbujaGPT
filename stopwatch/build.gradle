@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.edgestopwatch'
         minSdk 23
         targetSdk 33
-        versionCode 8
-        versionName '1.7-animated-square-cycles'
+        versionCode 9
+        versionName '1.8-progressive-square-reveal'
     }
 }
 
