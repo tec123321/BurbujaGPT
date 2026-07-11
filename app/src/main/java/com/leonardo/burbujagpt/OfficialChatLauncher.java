@@ -9,9 +9,13 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 
+import java.lang.reflect.Method;
+
+/** Abre la aplicación oficial sin copiar su APK ni sustituir su sesión. */
 final class OfficialChatLauncher {
     private static final String CHATGPT_PACKAGE = "com.openai.chatgpt";
     private static final String CHATGPT_URL = "https://chatgpt.com/";
+    private static final int WINDOWING_MODE_FREEFORM = 5;
 
     private OfficialChatLauncher() {
     }
@@ -21,10 +25,16 @@ final class OfficialChatLauncher {
     }
 
     static boolean openOfficialApp(Context context, boolean requestFloatingWindow) {
-        Intent intent = context.getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
-        if (intent == null) return false;
+        Intent launcher = context.getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
+        if (launcher == null) return false;
 
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Intent intent = new Intent(launcher);
+        intent.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                        | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+        );
+        intent.removeFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
         return startWithOptionalBounds(context, intent, requestFloatingWindow);
     }
 
@@ -37,7 +47,7 @@ final class OfficialChatLauncher {
 
         Intent intent = new Intent(Intent.ACTION_VIEW, uri);
         intent.addCategory(Intent.CATEGORY_BROWSABLE);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         return startWithOptionalBounds(context, intent, requestFloatingWindow);
     }
 
@@ -46,30 +56,58 @@ final class OfficialChatLauncher {
             Intent intent,
             boolean requestFloatingWindow
     ) {
-        try {
-            if (requestFloatingWindow && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                int width = context.getResources().getDisplayMetrics().widthPixels;
-                int height = context.getResources().getDisplayMetrics().heightPixels;
-                int horizontalMargin = dp(context, 14);
-                int topMargin = dp(context, 72);
-                int bottomMargin = dp(context, 88);
-
-                Rect bounds = new Rect(
-                        horizontalMargin,
-                        topMargin,
-                        Math.max(horizontalMargin + dp(context, 280), width - horizontalMargin),
-                        Math.max(topMargin + dp(context, 420), height - bottomMargin)
-                );
+        if (requestFloatingWindow && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
                 ActivityOptions options = ActivityOptions.makeBasic();
-                options.setLaunchBounds(bounds);
+                options.setLaunchBounds(calculatePopupBounds(context));
+                requestSamsungFreeformWindow(options);
                 Bundle bundle = options.toBundle();
                 context.startActivity(intent, bundle);
-            } else {
-                context.startActivity(intent);
+                return true;
+            } catch (ActivityNotFoundException | SecurityException | IllegalArgumentException ignored) {
+                // One UI puede rechazar la petición de ventana libre. Se reintenta normalmente.
             }
+        }
+
+        try {
+            context.startActivity(intent);
             return true;
-        } catch (ActivityNotFoundException | SecurityException e) {
+        } catch (ActivityNotFoundException | SecurityException | IllegalArgumentException ignored) {
             return false;
+        }
+    }
+
+    private static Rect calculatePopupBounds(Context context) {
+        int screenWidth = context.getResources().getDisplayMetrics().widthPixels;
+        int screenHeight = context.getResources().getDisplayMetrics().heightPixels;
+        int margin = dp(context, 18);
+        int top = dp(context, 72);
+        int bottom = dp(context, 96);
+
+        int desiredWidth = Math.max(dp(context, 320), screenWidth - margin * 2);
+        int desiredHeight = Math.max(dp(context, 480), screenHeight - top - bottom);
+        int left = Math.max(margin, (screenWidth - desiredWidth) / 2);
+        int right = Math.min(screenWidth - margin, left + desiredWidth);
+        int lower = Math.min(screenHeight - bottom, top + desiredHeight);
+
+        return new Rect(left, top, right, lower);
+    }
+
+    /**
+     * Samsung usa el modo de ventana libre para la vista emergente. Android no expone
+     * una API pública para forzarlo en otra aplicación, así que esta petición es de
+     * mejor esfuerzo y se ignora de forma segura cuando One UI la bloquea.
+     */
+    private static void requestSamsungFreeformWindow(ActivityOptions options) {
+        try {
+            Method method = ActivityOptions.class.getDeclaredMethod(
+                    "setLaunchWindowingMode",
+                    int.class
+            );
+            method.setAccessible(true);
+            method.invoke(options, WINDOWING_MODE_FREEFORM);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // setLaunchBounds sigue siendo útil cuando el sistema ya está en modo libre.
         }
     }
 
