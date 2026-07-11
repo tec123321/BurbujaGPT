@@ -3,6 +3,7 @@ package com.leonardo.burbujagpt;
 import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -16,30 +17,32 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** Configura una conversación Android que aloja la actividad oficial de ChatGPT. */
 public class MainActivity extends Activity {
-    private static final int NOTIFICATION_PERMISSION_REQUEST = 1300;
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 1400;
     private static final int BACKGROUND = 0xFF050505;
     private static final int CARD = 0xFF171717;
     private static final int BORDER = 0xFF343434;
     private static final int TEXT = 0xFFF5F5F5;
     private static final int MUTED = 0xFFA3A3A3;
-    private static final int PRIMARY = 0xFF2563EB;
+    private static final int PRIMARY = 0xFF10A37F;
 
     private TextView statusView;
     private TextView diagnosticView;
-    private Button activateButton;
+    private Button autoButton;
+    private Runnable pendingAfterPermission;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(Color.BLACK);
         getWindow().setNavigationBarColor(Color.BLACK);
+        NativeBubblePublisher.cancelLegacy(this);
         setContentView(buildUi());
     }
 
@@ -62,25 +65,20 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        TextView orb = text("✦", 34, Color.WHITE, true);
-        orb.setGravity(Gravity.CENTER);
-        GradientDrawable orbBackground = new GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF7C3AED, 0xFF0EA5E9, 0xFF10B981}
-        );
-        orbBackground.setShape(GradientDrawable.OVAL);
-        orb.setBackground(orbBackground);
-        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(dp(76), dp(76));
-        orbParams.gravity = Gravity.CENTER_HORIZONTAL;
-        root.addView(orb, orbParams);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.ic_gpt_logo);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(78), dp(78));
+        logoParams.gravity = Gravity.CENTER_HORIZONTAL;
+        root.addView(logo, logoParams);
 
-        TextView title = text("Globo GPT V13", 28, TEXT, true);
+        TextView title = text("Globo GPT", 28, TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(14), 0, 0);
         root.addView(title, titleParams);
 
-        TextView subtitle = text("ChatGPT oficial en una burbuja nativa", 15, MUTED, false);
+        TextView subtitle = text("Varios chats y activación por notificaciones", 15, MUTED, false);
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = matchWrap();
         subtitleParams.setMargins(0, dp(6), 0, dp(18));
@@ -88,36 +86,49 @@ public class MainActivity extends Activity {
 
         LinearLayout explanation = card();
         explanation.addView(text(
-                "No usa WebView, Shizuku, superposición ni ventana emergente de Samsung. Publica una conversación de Android y abre la actividad de la aplicación oficial instalada dentro de la tarea de esa burbuja.",
+                "Crea globos manualmente o automáticamente cuando ChatGPT oficial publique una notificación. Cada conversación usa su propio globo y muestra el número de avisos pendientes.",
                 14,
                 TEXT,
                 false
         ), matchWrap());
-        TextView session = text(
-                "La sesión, Plus, historial, voz y actualizaciones siguen perteneciendo a ChatGPT oficial porque su APK y su firma no se modifican.",
+        TextView licenseNote = text(
+                "La aplicación rechaza copias modificadas de ChatGPT para evitar el error de licencia que aparece después de varios minutos.",
                 12,
                 MUTED,
                 false
         );
-        LinearLayout.LayoutParams sessionParams = matchWrap();
-        sessionParams.setMargins(0, dp(10), 0, 0);
-        explanation.addView(session, sessionParams);
+        LinearLayout.LayoutParams noteParams = matchWrap();
+        noteParams.setMargins(0, dp(10), 0, 0);
+        explanation.addView(licenseNote, noteParams);
         root.addView(explanation, cardParams());
 
         statusView = text("", 14, TEXT, true);
         root.addView(statusView, cardParams());
 
-        activateButton = button("Activar burbuja nativa", true, view -> beginActivation());
-        root.addView(activateButton, buttonParams());
+        root.addView(button("Crear un globo de chat", true, view -> createManualBubble()), buttonParams());
+
+        autoButton = button("Activar globos automáticos", false, view -> toggleAutomaticBubbles());
+        root.addView(autoButton, buttonParams());
+
+        root.addView(button(
+                "Permitir acceso a notificaciones",
+                false,
+                view -> openNotificationListenerSettings()
+        ), buttonParams());
         root.addView(button(
                 "Permitir burbujas en Android",
                 false,
                 view -> openBubbleSettings()
         ), buttonParams());
         root.addView(button(
-                "Desactivar burbuja",
+                "Reinstalar ChatGPT oficial",
                 false,
-                view -> deactivateBubble()
+                view -> openChatGptStorePage()
+        ), buttonParams());
+        root.addView(button(
+                "Eliminar todos los globos",
+                false,
+                view -> removeAllBubbles()
         ), buttonParams());
 
         diagnosticView = text("", 12, 0xFFFCA5A5, false);
@@ -125,7 +136,7 @@ public class MainActivity extends Activity {
         root.addView(diagnosticView, cardParams());
 
         TextView help = text(
-                "Después de activarla, toca el icono de burbuja en la notificación si One UI no la expande automáticamente.",
+                "La activación automática requiere habilitar una sola vez el acceso a notificaciones. ChatGPT oficial también debe tener sus notificaciones activadas.",
                 12,
                 MUTED,
                 false
@@ -135,83 +146,126 @@ public class MainActivity extends Activity {
         return scroll;
     }
 
-    private void beginActivation() {
+    private void createManualBubble() {
+        if (!canUseBubbles()) return;
+        runWithNotificationPermission(() -> {
+            try {
+                AppPreferences.clearLastError(this);
+                BubbleRecord record = NativeBubblePublisher.publishManual(this, true);
+                Toast.makeText(this, record.title + " creado", Toast.LENGTH_SHORT).show();
+                getWindow().getDecorView().postDelayed(this::updateStatus, 350);
+                getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 750);
+            } catch (RuntimeException | LinkageError error) {
+                AppPreferences.recordError(this, "No se pudo crear el globo manual", error);
+                Toast.makeText(this, "Android rechazó el globo", Toast.LENGTH_LONG).show();
+                updateStatus();
+            }
+        });
+    }
+
+    private void toggleAutomaticBubbles() {
+        if (AppPreferences.isAutoBubblesEnabled(this)) {
+            AppPreferences.setAutoBubblesEnabled(this, false);
+            Toast.makeText(this, "Globos automáticos desactivados", Toast.LENGTH_SHORT).show();
+            updateStatus();
+            return;
+        }
+        if (!canUseBubbles()) return;
+
+        runWithNotificationPermission(() -> {
+            AppPreferences.setAutoBubblesEnabled(this, true);
+            if (!isNotificationListenerEnabled()) {
+                Toast.makeText(
+                        this,
+                        "Activa el acceso de Globo GPT a las notificaciones",
+                        Toast.LENGTH_LONG
+                ).show();
+                openNotificationListenerSettings();
+            } else {
+                Toast.makeText(this, "Globos automáticos activados", Toast.LENGTH_SHORT).show();
+            }
+            updateStatus();
+        });
+    }
+
+    private boolean canUseBubbles() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             Toast.makeText(this, "Se requiere Android 11 o posterior", Toast.LENGTH_LONG).show();
-            return;
+            return false;
         }
-        if (!isOfficialAppInstalled()) {
-            Toast.makeText(this, "ChatGPT oficial no está instalado", Toast.LENGTH_LONG).show();
+
+        OfficialChatGptVerifier.Result verification = OfficialChatGptVerifier.verify(this);
+        if (!verification.valid) {
+            AppPreferences.recordMessage(this, verification.message);
+            Toast.makeText(this, verification.message, Toast.LENGTH_LONG).show();
             openChatGptStorePage();
-            return;
+            updateStatus();
+            return false;
         }
+        return true;
+    }
+
+    private void runWithNotificationPermission(Runnable action) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
+            pendingAfterPermission = action;
             requestPermissions(
                     new String[]{Manifest.permission.POST_NOTIFICATIONS},
                     NOTIFICATION_PERMISSION_REQUEST
             );
             return;
         }
-        publishBubble();
+        action.run();
     }
 
-    private void publishBubble() {
-        try {
-            AppPreferences.clearLastError(this);
-            NativeBubblePublisher.publish(this, true);
-            Toast.makeText(this, "Conversación de burbuja publicada", Toast.LENGTH_SHORT).show();
-            getWindow().getDecorView().postDelayed(this::updateStatus, 450);
-            getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 900);
-        } catch (RuntimeException | LinkageError error) {
-            AppPreferences.recordError(this, "No se pudo publicar la burbuja", error);
-            Toast.makeText(this, "Android rechazó la burbuja", Toast.LENGTH_LONG).show();
-            updateStatus();
-        }
-    }
-
-    private void deactivateBubble() {
-        NativeBubblePublisher.cancel(this);
-        Toast.makeText(this, "Burbuja desactivada", Toast.LENGTH_SHORT).show();
-        getWindow().getDecorView().postDelayed(this::updateStatus, 180);
+    private void removeAllBubbles() {
+        NativeBubblePublisher.cancelAll(this);
+        Toast.makeText(this, "Todos los globos fueron eliminados", Toast.LENGTH_SHORT).show();
+        updateStatus();
     }
 
     private void updateStatus() {
-        if (statusView == null || activateButton == null) return;
+        if (statusView == null || autoButton == null) return;
+
+        OfficialChatGptVerifier.Result verification = OfficialChatGptVerifier.verify(this);
+        boolean listenerEnabled = isNotificationListenerEnabled();
+        boolean autoEnabled = AppPreferences.isAutoBubblesEnabled(this);
+        int bubbleCount = NativeBubblePublisher.activeBubbleCount(this);
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            statusView.setText("Estado: Android no admite esta burbuja nativa");
+            statusView.setText("Estado: Android no admite burbujas nativas");
             statusView.setTextColor(0xFFFCA5A5);
-            activateButton.setEnabled(false);
-        } else if (!isOfficialAppInstalled()) {
-            statusView.setText("Estado: falta instalar ChatGPT oficial");
+        } else if (!verification.valid) {
+            statusView.setText("Estado: " + verification.message);
             statusView.setTextColor(0xFFFCA5A5);
-            activateButton.setText("Instalar ChatGPT oficial");
-            activateButton.setEnabled(true);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
-            statusView.setText("Estado: falta permitir notificaciones");
+            statusView.setText("Estado: falta permitir notificaciones de Globo GPT");
             statusView.setTextColor(0xFFFBBF24);
-            activateButton.setText("Permitir y activar");
-            activateButton.setEnabled(true);
-        } else if (NativeBubblePublisher.isExpandedAsBubble(this)) {
-            statusView.setText("Estado: burbuja nativa activa");
-            statusView.setTextColor(0xFF34D399);
-            activateButton.setText("Volver a publicar burbuja");
-            activateButton.setEnabled(true);
-        } else if (NativeBubblePublisher.isPosted(this)) {
-            statusView.setText("Estado: conversación publicada · permite la burbuja en Android");
-            statusView.setTextColor(0xFFFBBF24);
-            activateButton.setText("Volver a publicar burbuja");
-            activateButton.setEnabled(true);
         } else {
-            statusView.setText("Estado: listo");
-            statusView.setTextColor(TEXT);
-            activateButton.setText("Activar burbuja nativa");
-            activateButton.setEnabled(true);
+            String autoState;
+            if (!autoEnabled) {
+                autoState = "automático desactivado";
+            } else if (!listenerEnabled) {
+                autoState = "automático pendiente de permiso";
+            } else {
+                autoState = "automático activo";
+            }
+            statusView.setText(
+                    "Estado: ChatGPT oficial verificado · "
+                            + bubbleCount + (bubbleCount == 1 ? " globo" : " globos")
+                            + " · " + autoState
+            );
+            statusView.setTextColor(
+                    autoEnabled && !listenerEnabled ? 0xFFFBBF24 : 0xFF34D399
+            );
         }
+
+        autoButton.setText(autoEnabled
+                ? "Desactivar globos automáticos"
+                : "Activar globos automáticos");
 
         String diagnostic = AppPreferences.getLastError(this);
         if (diagnostic.isEmpty()) {
@@ -219,6 +273,26 @@ public class MainActivity extends Activity {
         } else {
             diagnosticView.setText("Diagnóstico:\n" + diagnostic);
             diagnosticView.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private boolean isNotificationListenerEnabled() {
+        String enabled = Settings.Secure.getString(
+                getContentResolver(),
+                "enabled_notification_listeners"
+        );
+        ComponentName component = new ComponentName(
+                this,
+                ChatGptNotificationListenerService.class
+        );
+        return enabled != null && enabled.contains(component.flattenToString());
+    }
+
+    private void openNotificationListenerSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+        } catch (ActivityNotFoundException error) {
+            Toast.makeText(this, "Android no expuso el ajuste de notificaciones", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -241,12 +315,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private boolean isOfficialAppInstalled() {
-        return getPackageManager().getLaunchIntentForPackage(
-                NativeBubblePublisher.CHATGPT_PACKAGE
-        ) != null;
-    }
-
     private void openChatGptStorePage() {
         try {
             startActivity(new Intent(
@@ -266,10 +334,17 @@ public class MainActivity extends Activity {
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(requestCode, permissions, results);
         if (requestCode != NOTIFICATION_PERMISSION_REQUEST) return;
+
+        Runnable action = pendingAfterPermission;
+        pendingAfterPermission = null;
         if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
-            publishBubble();
+            if (action != null) action.run();
         } else {
-            Toast.makeText(this, "Sin notificaciones Android no puede crear la burbuja", Toast.LENGTH_LONG).show();
+            Toast.makeText(
+                    this,
+                    "Sin notificaciones Android no puede crear los globos",
+                    Toast.LENGTH_LONG
+            ).show();
             updateStatus();
         }
     }
