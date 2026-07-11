@@ -54,3 +54,15 @@ Si One UI publica la conversacion solo como una notificacion normal, V8 mostrara
 En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como `BurbujaGPT-V8-debug-apk`.
 
 El proyecto utiliza `targetSdk 35` y `minSdk 23`.
+
+## Cronómetro lateral v1.4
+
+El módulo independiente `:stopwatch` genera la aplicación `com.leonardo.edgestopwatch`.
+
+- La barra contraída añade marcas negras por cada intervalo completado. El intervalo puede ser de 5, 10, 20 minutos o un valor personalizado entre 1 y 720 minutos.
+- El panel admite hasta seis temporizadores configurables. Cada uno se puede mostrar u ocultar, iniciar, pausar y reiniciar por separado.
+- Un interruptor general desactiva todos los temporizadores sin eliminar su configuración.
+- La escala global ajusta el panel, los controles, los temporizadores, la barra contraída y la zona táctil.
+- El menú usa una interfaz más oscura y el icono representa el cronómetro junto con la barra lateral de intervalos.
+
+Para compilarlo en GitHub: **Actions > Build Edge Stopwatch APK > Run workflow**. El artefacto se publica como `Cronometro-Lateral-v1.4-debug-apk`.
