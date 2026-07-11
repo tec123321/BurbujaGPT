@@ -8,9 +8,28 @@ android {
 
     defaultConfig {
         applicationId 'com.leonardo.burbujagpt'
-        minSdk 23
+        minSdk 24
         targetSdk 35
-        versionCode 11
-        versionName '1.1-official-popup'
+        versionCode 12
+        versionName '1.2-shizuku-popup'
     }
+
+    buildFeatures {
+        aidl true
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
+}
+
+dependencies {
+    def shizukuVersion = '13.1.5'
+    implementation "dev.rikka.shizuku:api:$shizukuVersion"
+    implementation "dev.rikka.shizuku:provider:$shizukuVersion"
+    implementation 'androidx.annotation:annotation:1.8.2'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }

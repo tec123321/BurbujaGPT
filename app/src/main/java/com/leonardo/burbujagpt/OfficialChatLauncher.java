@@ -11,7 +11,7 @@ import android.os.Bundle;
 
 import java.lang.reflect.Method;
 
-/** Abre la aplicación oficial sin copiar su APK ni sustituir su sesión. */
+/** Abre la aplicación oficial conservando su paquete, firma y sesión. */
 final class OfficialChatLauncher {
     private static final String CHATGPT_PACKAGE = "com.openai.chatgpt";
     private static final String CHATGPT_URL = "https://chatgpt.com/";
@@ -27,6 +27,21 @@ final class OfficialChatLauncher {
     static boolean openOfficialApp(Context context, boolean requestFloatingWindow) {
         Intent launcher = context.getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
         if (launcher == null) return false;
+
+        if (requestFloatingWindow && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                Intent bridge = new Intent(context, ShizukuLaunchActivity.class);
+                bridge.addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK
+                                | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+                                | Intent.FLAG_ACTIVITY_NO_ANIMATION
+                );
+                context.startActivity(bridge);
+                return true;
+            } catch (ActivityNotFoundException | SecurityException | IllegalArgumentException ignored) {
+                // Se mantiene el método compatible como último recurso.
+            }
+        }
 
         Intent intent = new Intent(launcher);
         intent.addFlags(
@@ -65,7 +80,7 @@ final class OfficialChatLauncher {
                 context.startActivity(intent, bundle);
                 return true;
             } catch (ActivityNotFoundException | SecurityException | IllegalArgumentException ignored) {
-                // One UI puede rechazar la petición de ventana libre. Se reintenta normalmente.
+                // One UI puede rechazar la petición; se reintenta normalmente.
             }
         }
 
@@ -93,11 +108,6 @@ final class OfficialChatLauncher {
         return new Rect(left, top, right, lower);
     }
 
-    /**
-     * Samsung usa el modo de ventana libre para la vista emergente. Android no expone
-     * una API pública para forzarlo en otra aplicación, así que esta petición es de
-     * mejor esfuerzo y se ignora de forma segura cuando One UI la bloquea.
-     */
     private static void requestSamsungFreeformWindow(ActivityOptions options) {
         try {
             Method method = ActivityOptions.class.getDeclaredMethod(
@@ -107,7 +117,6 @@ final class OfficialChatLauncher {
             method.setAccessible(true);
             method.invoke(options, WINDOWING_MODE_FREEFORM);
         } catch (ReflectiveOperationException | RuntimeException ignored) {
-            // setLaunchBounds sigue siendo útil cuando el sistema ya está en modo libre.
         }
     }
 
