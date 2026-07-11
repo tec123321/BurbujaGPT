@@ -23,6 +23,7 @@ import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -44,9 +45,11 @@ public class StopwatchService extends Service {
     private static final String STATE_PREFS = "stopwatch_state";
     private static final String WINDOW_PREFS = "stopwatch_window";
 
-    private static final int EDGE_CONTAINER_WIDTH_DP = 12;
-    private static final int EDGE_EXPOSED_WIDTH_DP = 8;
-    private static final int EDGE_HEIGHT_DP = 52;
+    private static final int EDGE_HIT_WIDTH_DP = 38;
+    private static final int EDGE_LINE_WIDTH_DP = 8;
+    private static final int EDGE_HEIGHT_DP = 62;
+    private static final int DELETE_ZONE_HEIGHT_DP = 130;
+    private static final long DOUBLE_TAP_TIMEOUT_MS = 380L;
 
     private static volatile boolean serviceRunning;
 
@@ -67,12 +70,18 @@ public class StopwatchService extends Service {
     private LinearLayout expandedPanel;
     private TextView timeView;
     private TextView resetView;
-    private View edgeBarView;
+    private FrameLayout edgeTouchView;
+    private View edgeLineView;
     private ValueAnimator snapAnimator;
+
+    private TextView trashTargetView;
+    private WindowManager.LayoutParams trashTargetParams;
+    private boolean trashTargetAttached;
 
     private boolean running;
     private boolean collapsed;
     private boolean sideLeft;
+    private boolean firstStartCommand = true;
     private long accumulatedMs;
     private long startedAtRealtime;
 
@@ -114,6 +123,11 @@ public class StopwatchService extends Service {
             createOverlay();
         }
 
+        if (firstStartCommand && ACTION_SHOW.equals(action)) {
+            pauseWithoutReset();
+        }
+        firstStartCommand = false;
+
         if (ACTION_TOGGLE.equals(action)) {
             toggleRunning();
         } else if (ACTION_RESET.equals(action)) {
@@ -139,6 +153,7 @@ public class StopwatchService extends Service {
         serviceRunning = false;
         handler.removeCallbacksAndMessages(null);
         if (snapAnimator != null) snapAnimator.cancel();
+        hideTrashTarget();
         saveStopwatchState();
 
         if (windowManager != null && overlayRoot != null) {
@@ -164,24 +179,25 @@ public class StopwatchService extends Service {
 
         overlayRoot = new FrameLayout(this);
         expandedPanel = buildExpandedPanel();
-        edgeBarView = buildEdgeBar();
+        edgeTouchView = buildEdgeTouchView();
 
-        FrameLayout.LayoutParams expandedLayout = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT);
-        overlayRoot.addView(expandedPanel, expandedLayout);
-
-        FrameLayout.LayoutParams barLayout = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT);
-        overlayRoot.addView(edgeBarView, barLayout);
+        overlayRoot.addView(
+                expandedPanel,
+                new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT));
+        overlayRoot.addView(
+                edgeTouchView,
+                new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT));
 
         int overlayType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
 
         windowParams = new WindowManager.LayoutParams(
-                collapsed ? dp(EDGE_CONTAINER_WIDTH_DP) : dp(AppPrefs.getPanelWidth(this)),
+                collapsed ? dp(EDGE_HIT_WIDTH_DP) : dp(AppPrefs.getPanelWidth(this)),
                 collapsed ? dp(EDGE_HEIGHT_DP) : WindowManager.LayoutParams.WRAP_CONTENT,
                 overlayType,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
@@ -193,15 +209,16 @@ public class StopwatchService extends Service {
 
         if (collapsed) {
             expandedPanel.setVisibility(View.GONE);
-            edgeBarView.setVisibility(View.VISIBLE);
+            edgeTouchView.setVisibility(View.VISIBLE);
             windowParams.x = collapsedX();
         } else {
             expandedPanel.setVisibility(View.VISIBLE);
-            edgeBarView.setVisibility(View.GONE);
+            edgeTouchView.setVisibility(View.GONE);
             int width = dp(AppPrefs.getPanelWidth(this));
             windowParams.x = sideLeft ? dp(6) : Math.max(dp(6), screenWidth() - width - dp(6));
         }
 
+        configureEdgeLinePosition();
         applyAppearance();
         updateTimeText();
 
@@ -235,12 +252,10 @@ public class StopwatchService extends Service {
         timeView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         timeView.setGravity(Gravity.CENTER);
         timeView.setPadding(dp(4), 0, dp(4), 0);
-        timeView.setOnTouchListener(new DragTouchListener(this::toggleRunning, true));
-        LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(
-                0,
-                dp(48),
-                1f);
-        panel.addView(timeView, timeParams);
+        timeView.setOnTouchListener(new StopwatchDragListener(this::toggleRunning, true));
+        panel.addView(
+                timeView,
+                new LinearLayout.LayoutParams(0, dp(48), 1f));
 
         resetView = new TextView(this);
         resetView.setText("↺");
@@ -253,11 +268,36 @@ public class StopwatchService extends Service {
         return panel;
     }
 
-    private View buildEdgeBar() {
-        View bar = new View(this);
-        bar.setElevation(dp(8));
-        bar.setOnTouchListener(new DragTouchListener(() -> expandFromEdge(true), false));
-        return bar;
+    private FrameLayout buildEdgeTouchView() {
+        FrameLayout touchArea = new FrameLayout(this);
+        touchArea.setBackgroundColor(Color.TRANSPARENT);
+        touchArea.setOnTouchListener(new EdgeBarTouchListener());
+
+        edgeLineView = new View(this);
+        FrameLayout.LayoutParams lineParams = new FrameLayout.LayoutParams(
+                dp(EDGE_LINE_WIDTH_DP),
+                FrameLayout.LayoutParams.MATCH_PARENT);
+        touchArea.addView(edgeLineView, lineParams);
+        return touchArea;
+    }
+
+    private void configureEdgeLinePosition() {
+        if (edgeLineView == null) return;
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) edgeLineView.getLayoutParams();
+        params.gravity = sideLeft ? Gravity.START : Gravity.END;
+        edgeLineView.setLayoutParams(params);
+    }
+
+    private void pauseWithoutReset() {
+        if (running) {
+            accumulatedMs = elapsedNow();
+            running = false;
+            saveStopwatchState();
+        }
+        updateTimeText();
+        updateEdgeIndicator();
+        updateNotification();
+        handler.removeCallbacks(tickRunnable);
     }
 
     private void toggleRunning() {
@@ -324,36 +364,33 @@ public class StopwatchService extends Service {
 
         collapsed = true;
         expandedPanel.setVisibility(View.GONE);
-        edgeBarView.setVisibility(View.VISIBLE);
-        windowParams.width = dp(EDGE_CONTAINER_WIDTH_DP);
+        edgeTouchView.setVisibility(View.VISIBLE);
+        windowParams.width = dp(EDGE_HIT_WIDTH_DP);
         windowParams.height = dp(EDGE_HEIGHT_DP);
         windowParams.y = clampY(windowParams.y);
+        windowParams.x = collapsedX();
+        configureEdgeLinePosition();
         updateEdgeIndicator();
         safeUpdateLayout();
 
-        int target = collapsedX();
-        if (animate) animateX(target); else setX(target);
+        if (animate) animateX(collapsedX());
         saveWindowState();
     }
 
     private void expandFromEdge(boolean animate) {
         if (overlayRoot == null || windowParams == null) return;
 
-        if (!collapsed) {
-            snapExpanded(animate);
-            scheduleTick();
-            return;
-        }
-
         collapsed = false;
-        edgeBarView.setVisibility(View.GONE);
+        edgeTouchView.setVisibility(View.GONE);
         expandedPanel.setVisibility(View.VISIBLE);
         windowParams.width = dp(AppPrefs.getPanelWidth(this));
         windowParams.height = WindowManager.LayoutParams.WRAP_CONTENT;
+        applyAppearance();
         safeUpdateLayout();
 
         overlayRoot.post(() -> {
             snapExpanded(animate);
+            updateTimeText();
             scheduleTick();
         });
         saveWindowState();
@@ -383,11 +420,7 @@ public class StopwatchService extends Service {
     }
 
     private int collapsedX() {
-        int containerWidth = dp(EDGE_CONTAINER_WIDTH_DP);
-        int exposedWidth = dp(EDGE_EXPOSED_WIDTH_DP);
-        return sideLeft
-                ? -(containerWidth - exposedWidth)
-                : screenWidth() - exposedWidth;
+        return sideLeft ? 0 : Math.max(0, screenWidth() - dp(EDGE_HIT_WIDTH_DP));
     }
 
     private void animateX(int targetX) {
@@ -455,16 +488,68 @@ public class StopwatchService extends Service {
     }
 
     private void updateEdgeIndicator() {
-        if (edgeBarView == null) return;
+        if (edgeLineView == null) return;
+        GradientDrawable line = new GradientDrawable();
+        line.setColor(running ? Color.WHITE : Color.BLACK);
+        line.setCornerRadius(dp(4));
+        if (!running) line.setStroke(dp(1), Color.rgb(85, 85, 85));
+        edgeLineView.setBackground(line);
+        edgeLineView.setAlpha(1f);
+    }
 
-        GradientDrawable bar = new GradientDrawable();
-        bar.setColor(running ? Color.WHITE : Color.BLACK);
-        bar.setCornerRadius(dp(4));
-        if (!running) {
-            bar.setStroke(dp(1), Color.rgb(90, 90, 90));
+    private void showTrashTarget(boolean active) {
+        if (windowManager == null) return;
+
+        if (trashTargetView == null) {
+            trashTargetView = new TextView(this);
+            trashTargetView.setText("🗑");
+            trashTargetView.setTextSize(30);
+            trashTargetView.setGravity(Gravity.CENTER);
+            trashTargetView.setElevation(dp(12));
+
+            int overlayType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    : WindowManager.LayoutParams.TYPE_PHONE;
+            trashTargetParams = new WindowManager.LayoutParams(
+                    dp(76),
+                    dp(76),
+                    overlayType,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                            | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                            | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    PixelFormat.TRANSLUCENT);
+            trashTargetParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+            trashTargetParams.y = dp(26);
         }
-        edgeBarView.setBackground(bar);
-        edgeBarView.setAlpha(1f);
+
+        GradientDrawable background = new GradientDrawable();
+        background.setShape(GradientDrawable.OVAL);
+        background.setColor(active ? Color.rgb(190, 45, 45) : Color.rgb(55, 55, 55));
+        background.setStroke(dp(2), active ? Color.WHITE : Color.rgb(170, 170, 170));
+        trashTargetView.setBackground(background);
+        trashTargetView.setScaleX(active ? 1.12f : 1f);
+        trashTargetView.setScaleY(active ? 1.12f : 1f);
+
+        if (!trashTargetAttached) {
+            try {
+                windowManager.addView(trashTargetView, trashTargetParams);
+                trashTargetAttached = true;
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
+    private void hideTrashTarget() {
+        if (!trashTargetAttached || windowManager == null || trashTargetView == null) return;
+        try {
+            windowManager.removeView(trashTargetView);
+        } catch (RuntimeException ignored) {
+        }
+        trashTargetAttached = false;
+    }
+
+    private boolean isInsideDeleteZone(float rawY) {
+        return rawY >= screenHeight() - dp(DELETE_ZONE_HEIGHT_DP);
     }
 
     private void loadStopwatchState() {
@@ -474,7 +559,7 @@ public class StopwatchService extends Service {
         if (!initialized) {
             accumulatedMs = 0L;
             startedAtRealtime = SystemClock.elapsedRealtime();
-            running = true;
+            running = false;
             saveStopwatchState();
             return;
         }
@@ -607,7 +692,7 @@ public class StopwatchService extends Service {
         if (manager != null) manager.notify(NOTIFICATION_ID, buildNotification());
     }
 
-    private final class DragTouchListener implements View.OnTouchListener {
+    private class StopwatchDragListener implements View.OnTouchListener {
         private final Runnable tapAction;
         private final boolean collapseOnSwipe;
         private float downRawX;
@@ -616,7 +701,7 @@ public class StopwatchService extends Service {
         private int startY;
         private boolean moved;
 
-        DragTouchListener(Runnable tapAction, boolean collapseOnSwipe) {
+        StopwatchDragListener(Runnable tapAction, boolean collapseOnSwipe) {
             this.tapAction = tapAction;
             this.collapseOnSwipe = collapseOnSwipe;
         }
@@ -638,11 +723,14 @@ public class StopwatchService extends Service {
                 case MotionEvent.ACTION_MOVE:
                     float dx = event.getRawX() - downRawX;
                     float dy = event.getRawY() - downRawY;
-                    if (!moved && Math.hypot(dx, dy) > dp(5)) moved = true;
+                    if (!moved && Math.hypot(dx, dy) > ViewConfiguration.get(StopwatchService.this).getScaledTouchSlop()) {
+                        moved = true;
+                    }
                     if (moved) {
                         windowParams.x = startX + Math.round(dx);
                         windowParams.y = clampDragY(startY + Math.round(dy));
                         safeUpdateLayout();
+                        showTrashTarget(isInsideDeleteZone(event.getRawY()));
                     }
                     return true;
 
@@ -650,15 +738,16 @@ public class StopwatchService extends Service {
                 case MotionEvent.ACTION_CANCEL:
                     float totalDx = event.getRawX() - downRawX;
                     float totalDy = event.getRawY() - downRawY;
+                    boolean delete = moved && isInsideDeleteZone(event.getRawY());
+                    hideTrashTarget();
 
-                    if (!moved && event.getActionMasked() == MotionEvent.ACTION_UP) {
-                        tapAction.run();
+                    if (delete) {
+                        stopSelf();
                         return true;
                     }
 
-                    if (event.getRawY() >= screenHeight() - dp(90)
-                            || (totalDy >= dp(100) && windowParams.y >= screenHeight() - dp(150))) {
-                        stopSelf();
+                    if (!moved && event.getActionMasked() == MotionEvent.ACTION_UP) {
+                        tapAction.run();
                         return true;
                     }
 
@@ -675,13 +764,9 @@ public class StopwatchService extends Service {
                             && Math.abs(totalDx) > Math.abs(totalDy) * 1.1f)
                             || nearLeftEdge
                             || nearRightEdge)) {
-                        if (nearLeftEdge) {
-                            sideLeft = true;
-                        } else if (nearRightEdge) {
-                            sideLeft = false;
-                        } else {
-                            sideLeft = totalDx < 0f;
-                        }
+                        if (nearLeftEdge) sideLeft = true;
+                        else if (nearRightEdge) sideLeft = false;
+                        else sideLeft = totalDx < 0f;
                         collapseToEdge(true);
                     } else {
                         sideLeft = center < screenWidth() / 2;
@@ -693,6 +778,38 @@ public class StopwatchService extends Service {
                 default:
                     return false;
             }
+        }
+    }
+
+    private final class EdgeBarTouchListener extends StopwatchDragListener {
+        private long lastTapAt;
+        private float lastTapX;
+        private float lastTapY;
+
+        EdgeBarTouchListener() {
+            super(() -> { }, false);
+        }
+
+        @Override
+        public boolean onTouch(View view, MotionEvent event) {
+            if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                long now = SystemClock.uptimeMillis();
+                float distance = (float) Math.hypot(
+                        event.getRawX() - lastTapX,
+                        event.getRawY() - lastTapY);
+                boolean doubleTap = now - lastTapAt <= DOUBLE_TAP_TIMEOUT_MS && distance <= dp(36);
+                lastTapAt = now;
+                lastTapX = event.getRawX();
+                lastTapY = event.getRawY();
+
+                if (doubleTap) {
+                    hideTrashTarget();
+                    expandFromEdge(true);
+                    lastTapAt = 0L;
+                    return true;
+                }
+            }
+            return super.onTouch(view, event);
         }
     }
 }
