@@ -50,11 +50,22 @@ replacements = [
     ),
 ]
 
+changed = False
 for old, new in replacements:
-    matches = source.count(old)
-    if matches != 1:
-        raise RuntimeError(f"Expected one match, found {matches}: {old[:90]!r}")
-    source = source.replace(old, new, 1)
+    old_matches = source.count(old)
+    new_matches = source.count(new)
+    if old_matches == 1:
+        source = source.replace(old, new, 1)
+        changed = True
+    elif old_matches == 0 and new_matches >= 1:
+        continue
+    else:
+        raise RuntimeError(
+            f"Unexpected replacement state: old={old_matches}, new={new_matches}, text={old[:90]!r}"
+        )
 
-source_path.write_text(source, encoding="utf-8")
-print("Applied stopwatch layout hotfix")
+if changed:
+    source_path.write_text(source, encoding="utf-8")
+    print("Applied stopwatch layout hotfix")
+else:
+    print("Stopwatch layout hotfix already applied")
