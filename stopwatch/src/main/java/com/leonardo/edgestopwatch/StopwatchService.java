@@ -290,7 +290,7 @@ public class StopwatchService extends Service {
         timeView.setOnTouchListener(new StopwatchDragListener(this::toggleRunning, true));
         stopwatchRow.addView(
                 timeView,
-                new LinearLayout.LayoutParams(0, scaledDp(50), 1f));
+                new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         resetView = new TextView(this);
         resetView.setText("↺");
@@ -334,6 +334,8 @@ public class StopwatchService extends Service {
                     Math.max(1, scaledDp(1)));
             dividerParams.leftMargin = scaledDp(10);
             dividerParams.rightMargin = scaledDp(10);
+            dividerParams.topMargin = scaledDp(5);
+            dividerParams.bottomMargin = scaledDp(5);
             timersContainer.addView(divider, dividerParams);
 
             LinearLayout row = new LinearLayout(this);
@@ -365,7 +367,7 @@ public class StopwatchService extends Service {
             timer.valueView = value;
             copy.addView(value, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    scaledDp(35)));
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
 
             TextView reset = new TextView(this);
             reset.setText("↺");
@@ -607,8 +609,9 @@ public class StopwatchService extends Service {
         stopwatchRow.setPadding(scaledDp(1), 0, 0, 0);
 
         LinearLayout.LayoutParams timeParams = (LinearLayout.LayoutParams) timeView.getLayoutParams();
-        timeParams.height = scaledDp(50);
+        timeParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
         timeView.setLayoutParams(timeParams);
+        timeView.setMinimumHeight(scaledDp(64));
         timeView.setPadding(scaledDp(4), 0, scaledDp(4), 0);
         timeView.setTextSize(AppPrefs.getTextSize(this) * uiScale());
 
@@ -621,13 +624,14 @@ public class StopwatchService extends Service {
         for (TimerRuntime timer : timers.values()) {
             if (timer.rowView == null) continue;
             timer.rowView.setPadding(scaledDp(5), scaledDp(2), 0, scaledDp(2));
-            timer.rowView.setMinimumHeight(scaledDp(56));
+            timer.rowView.setMinimumHeight(scaledDp(72));
             timer.labelView.setTextSize(11f * uiScale());
             timer.labelView.setPadding(scaledDp(3), scaledDp(2), scaledDp(3), 0);
             timer.valueView.setTextSize(Math.max(16f, AppPrefs.getTextSize(this) - 3f) * uiScale());
             LinearLayout.LayoutParams valueParams = (LinearLayout.LayoutParams) timer.valueView.getLayoutParams();
-            valueParams.height = scaledDp(35);
+            valueParams.height = ViewGroup.LayoutParams.WRAP_CONTENT;
             timer.valueView.setLayoutParams(valueParams);
+            timer.valueView.setMinimumHeight(scaledDp(50));
             LinearLayout.LayoutParams timerResetParams = (LinearLayout.LayoutParams) timer.resetView.getLayoutParams();
             timerResetParams.width = scaledDp(42);
             timerResetParams.height = scaledDp(52);
@@ -1239,8 +1243,8 @@ public class StopwatchService extends Service {
             float step = markCount * preferredStep <= usable
                     ? preferredStep
                     : usable / (markCount + 1f);
-            float thickness = Math.max(1f, Math.min(scaledDp(2), step * 0.48f));
-            float markLength = Math.min(getWidth(), scaledDp(18));
+            float thickness = Math.max(1f, Math.min(scaledDp(3), step * 0.65f));
+            float markLength = Math.min(getWidth(), scaledDp(30));
             float startX = drawLeft ? 0f : getWidth() - markLength;
             float endX = drawLeft ? markLength : getWidth();
 
