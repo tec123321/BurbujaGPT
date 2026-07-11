@@ -10,7 +10,21 @@ android {
         applicationId 'com.leonardo.edgestopwatch'
         minSdk 23
         targetSdk 33
-        versionCode 7
-        versionName '1.6-configurable-contained-marks'
+        versionCode 8
+        versionName '1.7-animated-square-cycles'
     }
+}
+
+def squareIndicatorPatch = rootProject.file('tools/patch_stopwatch_squares.py')
+
+tasks.register('patchStopwatchSquareIndicator', Exec) {
+    inputs.file(squareIndicatorPatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/MainActivity.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', squareIndicatorPatch.absolutePath
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('patchStopwatchSquareIndicator')
 }
