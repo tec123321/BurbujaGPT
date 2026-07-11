@@ -3,12 +3,15 @@ package com.leonardo.burbujagpt;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.MutableContextWrapper;
+import android.graphics.Bitmap;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.ViewGroup;
 import android.view.ViewParent;
 import android.webkit.RenderProcessGoneDetail;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
@@ -16,6 +19,7 @@ import android.webkit.WebViewClient;
 final class PersistentWebViewStore {
     private static WebView retainedWebView;
     private static MutableContextWrapper contextWrapper;
+    private static boolean loadInProgress;
     private static final WebViewClient DETACHED_CLIENT = createDetachedClient();
 
     private PersistentWebViewStore() {
@@ -35,8 +39,8 @@ final class PersistentWebViewStore {
     }
 
     /**
-     * Inicializa Chromium al activar la burbuja. No carga la pagina ni consume la sesion:
-     * solo evita pagar todo el coste de arranque al primer toque.
+     * Inicializa Chromium y empieza a cargar la ultima pagina segura al activar la burbuja.
+     * La red y JavaScript trabajan antes del primer toque, sin rasterizar una vista oculta.
      */
     static void warmUp(Context applicationContext) {
         Context safeContext = applicationContext.getApplicationContext();
@@ -44,15 +48,50 @@ final class PersistentWebViewStore {
             new Handler(Looper.getMainLooper()).post(() -> warmUp(safeContext));
             return;
         }
-        if (retainedWebView != null) return;
-
         try {
-            contextWrapper = new MutableContextWrapper(safeContext);
-            retainedWebView = new WebView(contextWrapper);
+            if (retainedWebView == null) {
+                contextWrapper = new MutableContextWrapper(safeContext);
+                retainedWebView = new WebView(contextWrapper);
+            }
+            ChatActivity.applyBaseWebViewSettings(retainedWebView);
+            retainedWebView.setWebViewClient(DETACHED_CLIENT);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                retainedWebView.setRendererPriorityPolicy(
+                        WebView.RENDERER_PRIORITY_IMPORTANT,
+                        false
+                );
+            }
+
+            String currentUrl = retainedWebView.getUrl();
+            if (currentUrl == null || !currentUrl.startsWith("https://")) {
+                loadInProgress = true;
+                retainedWebView.loadUrl(ChatActivity.getLastSafeChatUrl(safeContext));
+            }
         } catch (RuntimeException error) {
+            WebView failedWebView = retainedWebView;
             retainedWebView = null;
             contextWrapper = null;
+            loadInProgress = false;
+            if (failedWebView != null) {
+                try {
+                    detachFromParent(failedWebView);
+                    failedWebView.destroy();
+                } catch (RuntimeException ignored) {
+                }
+            }
         }
+    }
+
+    static boolean isLoadInProgress(WebView webView) {
+        return webView != null && webView == retainedWebView && loadInProgress;
+    }
+
+    static void markLoadStarted(WebView webView) {
+        if (webView == retainedWebView) loadInProgress = true;
+    }
+
+    static void markLoadFinished(WebView webView) {
+        if (webView == retainedWebView) loadInProgress = false;
     }
 
     static WebView acquire(Context activityContext) {
@@ -89,6 +128,7 @@ final class PersistentWebViewStore {
         if (webView == retainedWebView) {
             retainedWebView = null;
             contextWrapper = null;
+            loadInProgress = false;
         }
     }
 
@@ -98,6 +138,7 @@ final class PersistentWebViewStore {
         retainedWebView.destroy();
         retainedWebView = null;
         contextWrapper = null;
+        loadInProgress = false;
     }
 
     static void destroy(WebView webView) {
@@ -108,6 +149,7 @@ final class PersistentWebViewStore {
         if (webView == retainedWebView) {
             retainedWebView = null;
             contextWrapper = null;
+            loadInProgress = false;
         }
     }
 
@@ -118,11 +160,41 @@ final class PersistentWebViewStore {
 
     private static WebViewClient createDetachedClient() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) return new DetachedWebViewClient();
-        return new WebViewClient();
+        return new DetachedWebViewClientBase();
+    }
+
+    private static class DetachedWebViewClientBase extends WebViewClient {
+        @Override
+        public void onPageStarted(WebView view, String url, Bitmap favicon) {
+            markLoadStarted(view);
+            super.onPageStarted(view, url, favicon);
+        }
+
+        @Override
+        public void onPageCommitVisible(WebView view, String url) {
+            markLoadFinished(view);
+            super.onPageCommitVisible(view, url);
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            markLoadFinished(view);
+            super.onPageFinished(view, url);
+        }
+
+        @Override
+        public void onReceivedError(
+                WebView view,
+                WebResourceRequest request,
+                WebResourceError error
+        ) {
+            if (request.isForMainFrame()) markLoadFinished(view);
+            super.onReceivedError(view, request, error);
+        }
     }
 
     @TargetApi(Build.VERSION_CODES.O)
-    private static final class DetachedWebViewClient extends WebViewClient {
+    private static final class DetachedWebViewClient extends DetachedWebViewClientBase {
         @Override
         public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
             discardAfterRendererGone(view);

@@ -1,8 +1,18 @@
-# BurbujaGPT V9
+# BurbujaGPT V10
 
 Aplicacion Android en Java que abre los chats reales de ChatGPT desde una burbuja, sin usar la API de OpenAI.
 
-## Correccion principal de V9
+## Mejora principal de V10
+
+V10 reduce la espera real del primer toque: al activar el servicio configura el WebView y empieza a cargar la ultima URL segura de ChatGPT en segundo plano. Al abrir el globo se conecta esa misma instancia ya iniciada, con sus cookies, DOM y cache normal.
+
+- Precarga la ultima conversacion segura, no solo el motor Chromium.
+- Mantiene `LOAD_DEFAULT`: reutiliza recursos vigentes y revalida los vencidos.
+- Reduce desplazamiento suave y transiciones largas dentro de la interfaz movil.
+- No bloquea JavaScript, imagenes, almacenamiento, cookies ni dominios necesarios.
+- No usa `LOAD_CACHE_ELSE_NETWORK`, porque podria servir archivos vencidos y romper la aplicacion web.
+
+## Recuperacion incorporada desde V9
 
 V8 podia conservar una referencia a la pagina aunque Android ya hubiera detenido el proceso que la renderizaba. El resultado era un panel vacio que no respondia ni al recargar. V9 corrige esa ruta y reduce el consumo grafico del WebView:
 
@@ -39,14 +49,14 @@ Se conserva la correccion de V8 para el registro de la conversacion en One UI:
 
 ## Uso en Samsung
 
-1. Instala y abre **BurbujaGPT V9**.
+1. Instala y abre **BurbujaGPT V10**.
 2. Selecciona **Burbuja nativa de Android**.
 3. Pulsa **Configurar burbujas de Android / Samsung**.
 4. Permite notificaciones y burbujas.
 5. Comprueba **Ajustes > Notificaciones > Ajustes avanzados > Notificaciones flotantes > Burbujas**.
 6. Vuelve a la aplicacion y pulsa **Activar globo**.
 
-Si One UI publica la conversacion solo como una notificacion normal, V9 mostrara el globo compatible despues de unos segundos. El permiso **Aparecer encima** debe estar activo para ese respaldo.
+Si One UI publica la conversacion solo como una notificacion normal, V10 mostrara el globo compatible despues de unos segundos. El permiso **Aparecer encima** debe estar activo para ese respaldo.
 
 ## Modos
 
@@ -65,6 +75,6 @@ Si One UI publica la conversacion solo como una notificacion normal, V9 mostrara
 
 ## Compilar
 
-En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como `BurbujaGPT-V9-debug-apk`.
+En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como `BurbujaGPT-V10-debug-apk`.
 
 El proyecto utiliza `targetSdk 35` y `minSdk 23`.
