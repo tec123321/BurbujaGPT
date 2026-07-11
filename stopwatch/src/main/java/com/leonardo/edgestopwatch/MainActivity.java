@@ -20,7 +20,6 @@ import android.widget.Switch;
 import android.widget.TextView;
 
 public class MainActivity extends Activity {
-    private static final int REQUEST_OVERLAY = 4101;
     private static final int REQUEST_NOTIFICATIONS = 4102;
 
     private static final int BACKGROUND = Color.rgb(18, 18, 18);
@@ -30,6 +29,7 @@ public class MainActivity extends Activity {
 
     private TextView permissionStatus;
     private TextView sizeValue;
+    private TextView widthValue;
     private TextView opacityValue;
 
     @Override
@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView description = text(
-                "Cuenta hacia arriba sobre cualquier aplicación. Puedes arrastrarlo, pausarlo y plegarlo en el borde: al ocultarlo quedan visibles solo los segundos.",
+                "Expandido muestra el tiempo. Contraído solo muestra una barra vertical: blanca cuando corre y negra cuando está pausado.",
                 16,
                 TEXT_SECONDARY);
         description.setPadding(0, dp(8), 0, dp(16));
@@ -78,14 +78,14 @@ public class MainActivity extends Activity {
         root.addView(permissionButton, fullWidth());
 
         Button showButton = new Button(this);
-        showButton.setText("Mostrar e iniciar cronómetro");
+        showButton.setText("Mostrar cronómetro");
         showButton.setOnClickListener(v -> startStopwatch());
         LinearLayout.LayoutParams showParams = fullWidth();
         showParams.topMargin = dp(10);
         root.addView(showButton, showParams);
 
         Button stopButton = new Button(this);
-        stopButton.setText("Cerrar cronómetro flotante");
+        stopButton.setText("Cerrar cronómetro");
         stopButton.setOnClickListener(v -> sendServiceAction(StopwatchService.ACTION_STOP));
         LinearLayout.LayoutParams stopParams = fullWidth();
         stopParams.topMargin = dp(6);
@@ -112,6 +112,27 @@ public class MainActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar seekBar) {}
         });
         root.addView(sizeBar, fullWidth());
+
+        widthValue = text(
+                "Ancho: " + AppPrefs.getPanelWidth(this) + " dp",
+                16,
+                TEXT_SECONDARY);
+        widthValue.setPadding(0, dp(8), 0, 0);
+        root.addView(widthValue);
+        SeekBar widthBar = new SeekBar(this);
+        widthBar.setMax(AppPrefs.MAX_PANEL_WIDTH_DP - AppPrefs.MIN_PANEL_WIDTH_DP);
+        widthBar.setProgress(AppPrefs.getPanelWidth(this) - AppPrefs.MIN_PANEL_WIDTH_DP);
+        widthBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                int value = AppPrefs.MIN_PANEL_WIDTH_DP + progress;
+                AppPrefs.setPanelWidth(MainActivity.this, value);
+                widthValue.setText("Ancho: " + value + " dp");
+                refreshOverlay();
+            }
+            @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+            @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+        });
+        root.addView(widthBar, fullWidth());
 
         opacityValue = text(
                 "Opacidad: " + AppPrefs.getOpacity(this) + "%",
@@ -167,7 +188,7 @@ public class MainActivity extends Activity {
         root.addView(themeGroup, fullWidth());
 
         Switch tenthsSwitch = new Switch(this);
-        tenthsSwitch.setText("Mostrar décimas de segundo");
+        tenthsSwitch.setText("Mostrar décimas");
         tenthsSwitch.setTextColor(TEXT_PRIMARY);
         tenthsSwitch.setChecked(AppPrefs.showTenths(this));
         tenthsSwitch.setPadding(0, dp(8), 0, dp(8));
@@ -178,14 +199,14 @@ public class MainActivity extends Activity {
         root.addView(tenthsSwitch, fullWidth());
 
         TextView usage = text(
-                "Uso: toca el tiempo para pausar o continuar. Arrástralo para moverlo. Pulsa la flecha para ocultarlo; quedará una franja mínima con los segundos en movimiento. Toca esa franja para recuperarlo.",
+                "Gestos: toca los números para pausar o continuar; desliza horizontalmente para contraerlo en un borde; toca la barra para expandirlo; arrástralo hasta abajo para cerrarlo.",
                 15,
                 TEXT_SECONDARY);
         usage.setPadding(0, dp(12), 0, dp(10));
         root.addView(usage);
 
         TextView privacy = text(
-                "No contiene anuncios, no usa Internet y no solicita acceso a archivos, cámara, micrófono, contactos ni ubicación.",
+                "Sin anuncios, sin Internet y sin acceso a archivos, cámara, micrófono, contactos o ubicación.",
                 14,
                 TEXT_MUTED);
         root.addView(privacy);
@@ -223,7 +244,7 @@ public class MainActivity extends Activity {
         Intent intent = new Intent(
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:" + getPackageName()));
-        startActivityForResult(intent, REQUEST_OVERLAY);
+        startActivity(intent);
     }
 
     private void startStopwatch() {
