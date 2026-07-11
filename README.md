@@ -66,3 +66,5 @@ El módulo independiente `:stopwatch` genera la aplicación `com.leonardo.edgest
 - El menú usa una interfaz más oscura y el icono representa el cronómetro junto con la barra lateral de intervalos.
 
 Para compilarlo en GitHub: **Actions > Build Edge Stopwatch APK > Run workflow**. El artefacto se publica como `Cronometro-Lateral-v1.4-debug-apk`.
+
+El artefacto automático usa una firma temporal de CI. El APK que se distribuya debe volver a firmarse con la clave estable externa descrita en [`stopwatch/SIGNING.md`](stopwatch/SIGNING.md); la clave privada no se guarda en el repositorio público.
