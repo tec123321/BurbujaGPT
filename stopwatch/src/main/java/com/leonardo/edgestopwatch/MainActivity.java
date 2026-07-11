@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView description = text(
-                "Expandido muestra el tiempo. Contraído solo muestra una barra vertical: blanca cuando corre y negra cuando está pausado.",
+                "Se abre en pausa y conserva tus ajustes. Expandido muestra el tiempo; contraído deja una línea lateral blanca si está funcionando y negra si está pausado.",
                 16,
                 TEXT_SECONDARY);
         description.setPadding(0, dp(8), 0, dp(16));
@@ -199,7 +199,7 @@ public class MainActivity extends Activity {
         root.addView(tenthsSwitch, fullWidth());
 
         TextView usage = text(
-                "Gestos: toca los números para pausar o continuar; desliza horizontalmente para contraerlo en un borde; toca la barra para expandirlo; arrástralo hasta abajo para cerrarlo.",
+                "Gestos: toca los números para iniciar o pausar; desliza horizontalmente para contraerlo; da dos toques sobre la línea para expandirlo. Al arrastrarlo hacia abajo aparece una papelera; suéltalo encima para cerrarlo.",
                 15,
                 TEXT_SECONDARY);
         usage.setPadding(0, dp(12), 0, dp(10));
