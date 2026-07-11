@@ -31,5 +31,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-GPT-V11-debug-apk
+          name: Globo-GPT-V12-Shizuku-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
