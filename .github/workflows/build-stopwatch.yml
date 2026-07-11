@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -30,6 +30,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: cronometro-flotante
+          fetch-depth: 0
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -44,6 +45,17 @@ jobs:
 
       - name: Apply layout hotfix
         run: python3 stopwatch/apply_layout_hotfix.py
+
+      - name: Commit source hotfix
+        shell: bash
+        run: |
+          if ! git diff --quiet -- stopwatch/src/main/java/com/leonardo/edgestopwatch/StopwatchService.java; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add stopwatch/src/main/java/com/leonardo/edgestopwatch/StopwatchService.java
+            git commit -m 'Apply stopwatch layout fix and wider interval marks'
+            git push origin HEAD:cronometro-flotante
+          fi
 
       - name: Build debug APK
         run: gradle :stopwatch:assembleDebug --stacktrace
