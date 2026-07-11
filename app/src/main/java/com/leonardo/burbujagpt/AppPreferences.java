@@ -2,7 +2,6 @@ package com.leonardo.burbujagpt;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.os.Build;
 import android.util.Log;
 
 final class AppPreferences {
@@ -31,10 +30,7 @@ final class AppPreferences {
     }
 
     static String getMode(Context context) {
-        String defaultMode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
-                ? MODE_NATIVE
-                : MODE_OFFICIAL;
-        return prefs(context).getString(KEY_MODE, defaultMode);
+        return prefs(context).getString(KEY_MODE, MODE_OFFICIAL);
     }
 
     static void setMode(Context context, String mode) {
@@ -75,8 +71,8 @@ final class AppPreferences {
 
     static void recordNativeError(Context context, String phase, Throwable error) {
         String message = "Fase: " + phase
-                + "\nDispositivo: " + Build.MANUFACTURER + " " + Build.MODEL
-                + " · Android " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")"
+                + "\nDispositivo: " + android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL
+                + " · Android " + android.os.Build.VERSION.RELEASE + " (API " + android.os.Build.VERSION.SDK_INT + ")"
                 + "\n" + Log.getStackTraceString(error);
         recordNativeMessage(context, message);
     }

@@ -1,56 +1,34 @@
-# BurbujaGPT V8
+# Globo GPT V11
 
-Aplicacion Android en Java que abre los chats reales de ChatGPT desde una burbuja, sin usar la API de OpenAI.
+Aplicación Android ligera que mantiene instalada la aplicación oficial de ChatGPT y la abre desde un globo flotante. No modifica, clona ni redistribuye el APK de OpenAI.
 
-## Correccion principal de V8
+## Cambio principal
 
-V7 podia cerrarse al registrar o expandir la burbuja en algunos dispositivos Samsung. V8 cambia el arranque para evitar ese cierre:
+V11 elimina el WebView como modo predeterminado. Al tocar el globo:
 
-- La notificacion del servicio en primer plano y la notificacion de conversacion son independientes.
-- La conversacion usa un acceso directo nuevo, permanente y compatible con Android 11 o posterior.
-- La burbuja se crea desde el ID del acceso directo, como recomienda Android 11+.
-- Se eliminan metadatos opcionales que podian provocar incompatibilidades de One UI.
-- La aplicacion verifica si Samsung acepto realmente la notificacion como burbuja.
-- Si Samsung la rechaza o ocurre una excepcion, la aplicacion no se cierra: activa automaticamente el globo superpuesto compatible.
-- Los fallos de ejecucion se guardan y pueden copiarse desde la pantalla principal con **Copiar diagnostico**.
-- **Reintentar burbuja nativa** limpia el bloqueo preventivo y registra nuevamente la conversacion.
+- abre o recupera la aplicación oficial `com.openai.chatgpt`;
+- conserva el inicio con Google, Plus, historial, voz y las funciones nativas;
+- solicita a Samsung/Android una ventana libre con tamaño emergente;
+- si One UI rechaza la vista emergente, abre ChatGPT normalmente sin perder la sesión;
+- evita `CLEAR_TOP` y usa reordenamiento de tarea para no reiniciar innecesariamente la app oficial.
 
-## Continuidad y fluidez
+El nombre visible es **Globo GPT** y el identificador sigue siendo `com.leonardo.burbujagpt`, por lo que se instala junto a ChatGPT oficial.
 
-- El WebView no se pausa al minimizar.
-- El renderizador conserva prioridad alta cuando deja de estar visible.
-- La pagina se mantiene en memoria mientras el servicio sigue activo.
-- La ventana nativa evita una animacion duplicada al colapsarse.
-- Si la ventana nativa falla al crearse, se abre un panel compatible con un WebView limpio.
+## Uso
 
-## Uso en Samsung
+1. Instala y abre **Globo GPT V11**.
+2. Pulsa **Activar globo**.
+3. Permite **Aparecer encima** y las notificaciones.
+4. Toca el globo para abrir o recuperar ChatGPT.
+5. Mantén pulsado el globo para volver a la configuración.
+6. Arrástralo hacia la zona **×** para apagarlo.
 
-1. Instala y abre **BurbujaGPT V8**.
-2. Selecciona **Burbuja nativa de Android**.
-3. Pulsa **Configurar burbujas de Android / Samsung**.
-4. Permite notificaciones y burbujas.
-5. Comprueba **Ajustes > Notificaciones > Ajustes avanzados > Notificaciones flotantes > Burbujas**.
-6. Vuelve a la aplicacion y pulsa **Activar globo**.
+## Límite técnico
 
-Si One UI publica la conversacion solo como una notificacion normal, V8 mostrara el globo compatible despues de unos segundos. El permiso **Aparecer encima** debe estar activo para ese respaldo.
-
-## Modos
-
-- **Burbuja nativa de Android:** el sistema reconoce una conversacion con `MessagingStyle`, `Person`, un acceso directo permanente y `BubbleMetadata`.
-- **App oficial emergente:** usa la sesion y los chats de la aplicacion oficial cuando Samsung permite abrirla en ventana libre.
-- **Navegador emergente:** usa la sesion existente de Brave, Chrome u otro navegador.
-- **Panel web interno:** muestra `chatgpt.com` dentro de la ventana propia de BurbujaGPT.
-
-## Limites
-
-- Google bloquea OAuth dentro de WebView con `403: disallowed_useragent`. Para una cuenta creada solo con Google se debe usar el navegador o la app oficial.
-- Android no permite incrustar la actividad privada de la aplicacion oficial de ChatGPT dentro de una burbuja de otra aplicacion.
-- OpenAI no ofrece una API publica para importar el historial privado de ChatGPT; el panel usa el sitio oficial autenticado.
-- El servicio mejora la continuidad, pero Android puede finalizar cualquier proceso bajo presion extrema de memoria, reinicio o ahorro de bateria agresivo.
-- El proyecto es independiente y no esta afiliado con OpenAI.
+`ActivityOptions.setLaunchBounds()` solo tiene efecto cuando el dispositivo admite ventanas libres. La app también realiza una petición de mejor esfuerzo al modo freeform de Samsung, pero Android no ofrece una API pública que garantice forzar otra aplicación a vista emergente. La alternativa segura es abrir la app oficial en pantalla normal.
 
 ## Compilar
 
-En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como `BurbujaGPT-V8-debug-apk`.
+En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como `Globo-GPT-V11-debug-apk`.
 
 El proyecto utiliza `targetSdk 35` y `minSdk 23`.
