@@ -44,6 +44,10 @@ public class StopwatchService extends Service {
     private static final String STATE_PREFS = "stopwatch_state";
     private static final String WINDOW_PREFS = "stopwatch_window";
 
+    private static final int EDGE_CONTAINER_WIDTH_DP = 12;
+    private static final int EDGE_EXPOSED_WIDTH_DP = 8;
+    private static final int EDGE_HEIGHT_DP = 52;
+
     private static volatile boolean serviceRunning;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -62,10 +66,8 @@ public class StopwatchService extends Service {
     private FrameLayout overlayRoot;
     private LinearLayout expandedPanel;
     private TextView timeView;
-    private TextView toggleView;
     private TextView resetView;
-    private TextView closeView;
-    private TextView edgeSecondsView;
+    private View edgeBarView;
     private ValueAnimator snapAnimator;
 
     private boolean running;
@@ -120,6 +122,7 @@ public class StopwatchService extends Service {
             expandFromEdge(true);
         } else if (ACTION_REFRESH.equals(action)) {
             applyAppearance();
+            applyConfiguredWidth();
             updateTimeText();
         }
 
@@ -161,17 +164,25 @@ public class StopwatchService extends Service {
 
         overlayRoot = new FrameLayout(this);
         expandedPanel = buildExpandedPanel();
-        edgeSecondsView = buildEdgeSecondsView();
-        overlayRoot.addView(expandedPanel);
-        overlayRoot.addView(edgeSecondsView);
+        edgeBarView = buildEdgeBar();
+
+        FrameLayout.LayoutParams expandedLayout = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT);
+        overlayRoot.addView(expandedPanel, expandedLayout);
+
+        FrameLayout.LayoutParams barLayout = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT);
+        overlayRoot.addView(edgeBarView, barLayout);
 
         int overlayType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
 
         windowParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.WRAP_CONTENT,
+                collapsed ? dp(EDGE_CONTAINER_WIDTH_DP) : dp(AppPrefs.getPanelWidth(this)),
+                collapsed ? dp(EDGE_HEIGHT_DP) : WindowManager.LayoutParams.WRAP_CONTENT,
                 overlayType,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
@@ -182,14 +193,13 @@ public class StopwatchService extends Service {
 
         if (collapsed) {
             expandedPanel.setVisibility(View.GONE);
-            edgeSecondsView.setVisibility(View.VISIBLE);
-            windowParams.width = dp(38);
-            windowParams.height = dp(48);
+            edgeBarView.setVisibility(View.VISIBLE);
             windowParams.x = collapsedX();
         } else {
             expandedPanel.setVisibility(View.VISIBLE);
-            edgeSecondsView.setVisibility(View.GONE);
-            windowParams.x = sideLeft ? dp(6) : Math.max(dp(6), screenWidth() - dp(252));
+            edgeBarView.setVisibility(View.GONE);
+            int width = dp(AppPrefs.getPanelWidth(this));
+            windowParams.x = sideLeft ? dp(6) : Math.max(dp(6), screenWidth() - width - dp(6));
         }
 
         applyAppearance();
@@ -218,52 +228,36 @@ public class StopwatchService extends Service {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.HORIZONTAL);
         panel.setGravity(Gravity.CENTER_VERTICAL);
-        panel.setPadding(dp(10), dp(4), dp(4), dp(4));
+        panel.setPadding(dp(8), dp(4), dp(4), dp(4));
         panel.setElevation(dp(8));
 
         timeView = new TextView(this);
         timeView.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
         timeView.setGravity(Gravity.CENTER);
-        timeView.setMinWidth(dp(112));
-        timeView.setPadding(dp(4), 0, dp(6), 0);
+        timeView.setPadding(dp(4), 0, dp(4), 0);
         timeView.setOnTouchListener(new DragTouchListener(this::toggleRunning, true));
-        panel.addView(timeView, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(48)));
+        LinearLayout.LayoutParams timeParams = new LinearLayout.LayoutParams(
+                0,
+                dp(48),
+                1f);
+        panel.addView(timeView, timeParams);
 
-        toggleView = control("Ⅱ", this::toggleRunning);
-        resetView = control("↺", this::resetStopwatch);
-        closeView = control("×", this::stopSelf);
+        resetView = new TextView(this);
+        resetView.setText("↺");
+        resetView.setTextSize(20);
+        resetView.setGravity(Gravity.CENTER);
+        resetView.setBackgroundColor(Color.TRANSPARENT);
+        resetView.setOnClickListener(v -> resetStopwatch());
+        panel.addView(resetView, new LinearLayout.LayoutParams(dp(40), dp(44)));
 
-        panel.addView(toggleView);
-        panel.addView(resetView);
-        panel.addView(closeView);
         return panel;
     }
 
-    private TextView buildEdgeSecondsView() {
-        TextView view = new TextView(this);
-        view.setTextSize(14);
-        view.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-        view.setGravity(Gravity.CENTER);
-        view.setMinWidth(dp(38));
-        view.setMinHeight(dp(48));
-        view.setElevation(dp(8));
-        view.setOnTouchListener(new DragTouchListener(() -> expandFromEdge(true), false));
-        return view;
-    }
-
-    private TextView control(String text, Runnable action) {
-        TextView view = new TextView(this);
-        view.setText(text);
-        view.setTextSize(20);
-        view.setGravity(Gravity.CENTER);
-        view.setMinWidth(dp(38));
-        view.setMinHeight(dp(44));
-        view.setPadding(dp(2), 0, dp(2), 0);
-        view.setBackgroundColor(Color.TRANSPARENT);
-        view.setOnClickListener(v -> action.run());
-        return view;
+    private View buildEdgeBar() {
+        View bar = new View(this);
+        bar.setElevation(dp(8));
+        bar.setOnTouchListener(new DragTouchListener(() -> expandFromEdge(true), false));
+        return bar;
     }
 
     private void toggleRunning() {
@@ -276,6 +270,7 @@ public class StopwatchService extends Service {
         }
         saveStopwatchState();
         updateTimeText();
+        updateEdgeIndicator();
         updateNotification();
         scheduleTick();
     }
@@ -294,6 +289,8 @@ public class StopwatchService extends Service {
     }
 
     private void updateTimeText() {
+        if (timeView == null) return;
+
         long elapsed = elapsedNow();
         long totalSeconds = elapsed / 1000L;
         long hours = totalSeconds / 3600L;
@@ -301,27 +298,17 @@ public class StopwatchService extends Service {
         long seconds = totalSeconds % 60L;
         boolean showTenths = AppPrefs.showTenths(this);
 
-        if (timeView != null) {
-            String value;
-            if (hours > 0L) {
-                value = showTenths
-                        ? String.format(Locale.US, "%02d:%02d:%02d.%d", hours, minutes, seconds, (elapsed / 100L) % 10L)
-                        : String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds);
-            } else {
-                value = showTenths
-                        ? String.format(Locale.US, "%02d:%02d.%d", minutes, seconds, (elapsed / 100L) % 10L)
-                        : String.format(Locale.US, "%02d:%02d", minutes, seconds);
-            }
-            timeView.setText(value);
+        String value;
+        if (hours > 0L) {
+            value = showTenths
+                    ? String.format(Locale.US, "%02d:%02d:%02d.%d", hours, minutes, seconds, (elapsed / 100L) % 10L)
+                    : String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds);
+        } else {
+            value = showTenths
+                    ? String.format(Locale.US, "%02d:%02d.%d", minutes, seconds, (elapsed / 100L) % 10L)
+                    : String.format(Locale.US, "%02d:%02d", minutes, seconds);
         }
-
-        if (edgeSecondsView != null) {
-            edgeSecondsView.setText(String.format(Locale.US, "%02d", seconds));
-        }
-
-        if (toggleView != null) {
-            toggleView.setText(running ? "Ⅱ" : "▶");
-        }
+        timeView.setText(value);
     }
 
     private void scheduleTick() {
@@ -337,12 +324,12 @@ public class StopwatchService extends Service {
 
         collapsed = true;
         expandedPanel.setVisibility(View.GONE);
-        edgeSecondsView.setVisibility(View.VISIBLE);
-        windowParams.width = dp(38);
-        windowParams.height = dp(48);
+        edgeBarView.setVisibility(View.VISIBLE);
+        windowParams.width = dp(EDGE_CONTAINER_WIDTH_DP);
+        windowParams.height = dp(EDGE_HEIGHT_DP);
         windowParams.y = clampY(windowParams.y);
+        updateEdgeIndicator();
         safeUpdateLayout();
-        updateTimeText();
 
         int target = collapsedX();
         if (animate) animateX(target); else setX(target);
@@ -359,9 +346,9 @@ public class StopwatchService extends Service {
         }
 
         collapsed = false;
-        edgeSecondsView.setVisibility(View.GONE);
+        edgeBarView.setVisibility(View.GONE);
         expandedPanel.setVisibility(View.VISIBLE);
-        windowParams.width = WindowManager.LayoutParams.WRAP_CONTENT;
+        windowParams.width = dp(AppPrefs.getPanelWidth(this));
         windowParams.height = WindowManager.LayoutParams.WRAP_CONTENT;
         safeUpdateLayout();
 
@@ -372,11 +359,20 @@ public class StopwatchService extends Service {
         saveWindowState();
     }
 
+    private void applyConfiguredWidth() {
+        if (windowParams == null || collapsed) return;
+        windowParams.width = dp(AppPrefs.getPanelWidth(this));
+        safeUpdateLayout();
+        if (overlayRoot != null) {
+            overlayRoot.post(() -> snapExpanded(false));
+        }
+    }
+
     private void snapExpanded(boolean animate) {
         if (overlayRoot == null || windowParams == null) return;
 
-        int width = overlayRoot.getWidth();
-        if (width <= 0) width = dp(244);
+        int width = dp(AppPrefs.getPanelWidth(this));
+        windowParams.width = width;
         int target = sideLeft
                 ? dp(6)
                 : Math.max(dp(6), screenWidth() - width - dp(6));
@@ -387,9 +383,11 @@ public class StopwatchService extends Service {
     }
 
     private int collapsedX() {
-        int width = dp(38);
-        int exposed = dp(25);
-        return sideLeft ? -(width - exposed) : screenWidth() - exposed;
+        int containerWidth = dp(EDGE_CONTAINER_WIDTH_DP);
+        int exposedWidth = dp(EDGE_EXPOSED_WIDTH_DP);
+        return sideLeft
+                ? -(containerWidth - exposedWidth)
+                : screenWidth() - exposedWidth;
     }
 
     private void animateX(int targetX) {
@@ -418,7 +416,7 @@ public class StopwatchService extends Service {
     }
 
     private void applyAppearance() {
-        if (expandedPanel == null || edgeSecondsView == null) return;
+        if (expandedPanel == null || timeView == null || resetView == null) return;
 
         int theme = AppPrefs.getTheme(this);
         int background;
@@ -448,22 +446,25 @@ public class StopwatchService extends Service {
         panelBackground.setColor(background);
         panelBackground.setCornerRadius(dp(16));
         expandedPanel.setBackground(panelBackground);
-
-        GradientDrawable secondsBackground = new GradientDrawable();
-        secondsBackground.setColor(background);
-        secondsBackground.setCornerRadius(dp(10));
-        edgeSecondsView.setBackground(secondsBackground);
-
-        float alpha = AppPrefs.getOpacity(this) / 100f;
-        expandedPanel.setAlpha(alpha);
-        edgeSecondsView.setAlpha(Math.max(0.55f, alpha));
+        expandedPanel.setAlpha(AppPrefs.getOpacity(this) / 100f);
 
         timeView.setTextSize(AppPrefs.getTextSize(this));
         timeView.setTextColor(foreground);
-        toggleView.setTextColor(foreground);
         resetView.setTextColor(foreground);
-        closeView.setTextColor(foreground);
-        edgeSecondsView.setTextColor(foreground);
+        updateEdgeIndicator();
+    }
+
+    private void updateEdgeIndicator() {
+        if (edgeBarView == null) return;
+
+        GradientDrawable bar = new GradientDrawable();
+        bar.setColor(running ? Color.WHITE : Color.BLACK);
+        bar.setCornerRadius(dp(4));
+        if (!running) {
+            bar.setStroke(dp(1), Color.rgb(90, 90, 90));
+        }
+        edgeBarView.setBackground(bar);
+        edgeBarView.setAlpha(1f);
     }
 
     private void loadStopwatchState() {
@@ -517,11 +518,13 @@ public class StopwatchService extends Service {
     }
 
     private int clampY(int value) {
-        int viewHeight = overlayRoot == null || overlayRoot.getHeight() <= 0
-                ? (collapsed ? dp(48) : dp(56))
-                : overlayRoot.getHeight();
+        int viewHeight = collapsed ? dp(EDGE_HEIGHT_DP) : dp(56);
         int max = Math.max(dp(8), screenHeight() - viewHeight - dp(24));
         return Math.max(dp(8), Math.min(max, value));
+    }
+
+    private int clampDragY(int value) {
+        return Math.max(0, Math.min(screenHeight() - dp(12), value));
     }
 
     private int screenWidth() {
@@ -638,7 +641,7 @@ public class StopwatchService extends Service {
                     if (!moved && Math.hypot(dx, dy) > dp(5)) moved = true;
                     if (moved) {
                         windowParams.x = startX + Math.round(dx);
-                        windowParams.y = clampY(startY + Math.round(dy));
+                        windowParams.y = clampDragY(startY + Math.round(dy));
                         safeUpdateLayout();
                     }
                     return true;
@@ -653,19 +656,36 @@ public class StopwatchService extends Service {
                         return true;
                     }
 
-                    if (collapseOnSwipe
-                            && Math.abs(totalDx) >= dp(64)
-                            && Math.abs(totalDx) > Math.abs(totalDy) * 1.15f) {
-                        sideLeft = totalDx < 0f;
+                    if (event.getRawY() >= screenHeight() - dp(90)
+                            || (totalDy >= dp(100) && windowParams.y >= screenHeight() - dp(150))) {
+                        stopSelf();
+                        return true;
+                    }
+
+                    int center = windowParams.x + Math.max(dp(6), view.getWidth() / 2);
+                    boolean nearLeftEdge = windowParams.x <= dp(36);
+                    boolean nearRightEdge = windowParams.x + Math.max(view.getWidth(), dp(40))
+                            >= screenWidth() - dp(36);
+
+                    if (collapsed) {
+                        sideLeft = center < screenWidth() / 2;
+                        collapseToEdge(true);
+                    } else if (collapseOnSwipe
+                            && ((Math.abs(totalDx) >= dp(56)
+                            && Math.abs(totalDx) > Math.abs(totalDy) * 1.1f)
+                            || nearLeftEdge
+                            || nearRightEdge)) {
+                        if (nearLeftEdge) {
+                            sideLeft = true;
+                        } else if (nearRightEdge) {
+                            sideLeft = false;
+                        } else {
+                            sideLeft = totalDx < 0f;
+                        }
                         collapseToEdge(true);
                     } else {
-                        int center = windowParams.x + Math.max(dp(20), view.getWidth() / 2);
                         sideLeft = center < screenWidth() / 2;
-                        if (collapsed) {
-                            collapseToEdge(true);
-                        } else {
-                            snapExpanded(true);
-                        }
+                        snapExpanded(true);
                         saveWindowState();
                     }
                     return true;
