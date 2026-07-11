@@ -35,7 +35,6 @@ public class StopwatchService extends Service {
     public static final String ACTION_SHOW = "com.leonardo.edgestopwatch.SHOW";
     public static final String ACTION_TOGGLE = "com.leonardo.edgestopwatch.TOGGLE";
     public static final String ACTION_RESET = "com.leonardo.edgestopwatch.RESET";
-    public static final String ACTION_COLLAPSE = "com.leonardo.edgestopwatch.COLLAPSE";
     public static final String ACTION_EXPAND = "com.leonardo.edgestopwatch.EXPAND";
     public static final String ACTION_REFRESH = "com.leonardo.edgestopwatch.REFRESH";
     public static final String ACTION_STOP = "com.leonardo.edgestopwatch.STOP";
@@ -49,10 +48,11 @@ public class StopwatchService extends Service {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable tickRunnable = new Runnable() {
-        @Override public void run() {
+        @Override
+        public void run() {
             updateTimeText();
-            if (running && !collapsed && overlayRoot != null) {
-                handler.postDelayed(this, 50L);
+            if (running && overlayRoot != null) {
+                handler.postDelayed(this, 100L);
             }
         }
     };
@@ -64,9 +64,8 @@ public class StopwatchService extends Service {
     private TextView timeView;
     private TextView toggleView;
     private TextView resetView;
-    private TextView collapseView;
     private TextView closeView;
-    private TextView edgeHandle;
+    private TextView edgeSecondsView;
     private ValueAnimator snapAnimator;
 
     private boolean running;
@@ -100,6 +99,7 @@ public class StopwatchService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? ACTION_SHOW : intent.getAction();
+
         if (ACTION_STOP.equals(action)) {
             stopSelf();
             return START_NOT_STICKY;
@@ -116,8 +116,6 @@ public class StopwatchService extends Service {
             toggleRunning();
         } else if (ACTION_RESET.equals(action)) {
             resetStopwatch();
-        } else if (ACTION_COLLAPSE.equals(action)) {
-            collapseToEdge(true);
         } else if (ACTION_EXPAND.equals(action) || ACTION_SHOW.equals(action)) {
             expandFromEdge(true);
         } else if (ACTION_REFRESH.equals(action)) {
@@ -139,6 +137,7 @@ public class StopwatchService extends Service {
         handler.removeCallbacksAndMessages(null);
         if (snapAnimator != null) snapAnimator.cancel();
         saveStopwatchState();
+
         if (windowManager != null && overlayRoot != null) {
             try {
                 windowManager.removeView(overlayRoot);
@@ -146,6 +145,7 @@ public class StopwatchService extends Service {
             }
         }
         overlayRoot = null;
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE);
         } else {
@@ -161,13 +161,14 @@ public class StopwatchService extends Service {
 
         overlayRoot = new FrameLayout(this);
         expandedPanel = buildExpandedPanel();
-        edgeHandle = buildEdgeHandle();
+        edgeSecondsView = buildEdgeSecondsView();
         overlayRoot.addView(expandedPanel);
-        overlayRoot.addView(edgeHandle);
+        overlayRoot.addView(edgeSecondsView);
 
         int overlayType = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
+
         windowParams = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
@@ -177,21 +178,23 @@ public class StopwatchService extends Service {
                         | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
         windowParams.gravity = Gravity.TOP | Gravity.START;
+        windowParams.y = clampY(loadSavedY());
 
         if (collapsed) {
             expandedPanel.setVisibility(View.GONE);
-            edgeHandle.setVisibility(View.VISIBLE);
+            edgeSecondsView.setVisibility(View.VISIBLE);
             windowParams.width = dp(38);
-            windowParams.height = dp(64);
+            windowParams.height = dp(48);
             windowParams.x = collapsedX();
         } else {
             expandedPanel.setVisibility(View.VISIBLE);
-            edgeHandle.setVisibility(View.GONE);
-            windowParams.x = sideLeft ? dp(6) : Math.max(dp(6), screenWidth() - dp(260));
+            edgeSecondsView.setVisibility(View.GONE);
+            windowParams.x = sideLeft ? dp(6) : Math.max(dp(6), screenWidth() - dp(252));
         }
-        windowParams.y = clampY(loadSavedY());
 
         applyAppearance();
+        updateTimeText();
+
         try {
             windowManager.addView(overlayRoot, windowParams);
         } catch (RuntimeException error) {
@@ -223,30 +226,31 @@ public class StopwatchService extends Service {
         timeView.setGravity(Gravity.CENTER);
         timeView.setMinWidth(dp(112));
         timeView.setPadding(dp(4), 0, dp(6), 0);
-        timeView.setOnTouchListener(new DragTouchListener(this::toggleRunning));
+        timeView.setOnTouchListener(new DragTouchListener(this::toggleRunning, true));
         panel.addView(timeView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 dp(48)));
 
         toggleView = control("Ⅱ", this::toggleRunning);
         resetView = control("↺", this::resetStopwatch);
-        collapseView = control("‹", () -> collapseToEdge(true));
         closeView = control("×", this::stopSelf);
 
         panel.addView(toggleView);
         panel.addView(resetView);
-        panel.addView(collapseView);
         panel.addView(closeView);
         return panel;
     }
 
-    private TextView buildEdgeHandle() {
-        TextView handle = new TextView(this);
-        handle.setTextSize(24);
-        handle.setTypeface(Typeface.DEFAULT_BOLD);
-        handle.setElevation(dp(8));
-        handle.setOnTouchListener(new DragTouchListener(() -> expandFromEdge(true)));
-        return handle;
+    private TextView buildEdgeSecondsView() {
+        TextView view = new TextView(this);
+        view.setTextSize(14);
+        view.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        view.setGravity(Gravity.CENTER);
+        view.setMinWidth(dp(38));
+        view.setMinHeight(dp(48));
+        view.setElevation(dp(8));
+        view.setOnTouchListener(new DragTouchListener(() -> expandFromEdge(true), false));
+        return view;
     }
 
     private TextView control(String text, Runnable action) {
@@ -290,109 +294,108 @@ public class StopwatchService extends Service {
     }
 
     private void updateTimeText() {
-        if (timeView == null) return;
         long elapsed = elapsedNow();
         long totalSeconds = elapsed / 1000L;
         long hours = totalSeconds / 3600L;
         long minutes = (totalSeconds / 60L) % 60L;
         long seconds = totalSeconds % 60L;
         boolean showTenths = AppPrefs.showTenths(this);
-        String value;
-        if (hours > 0L) {
-            value = showTenths
-                    ? String.format(Locale.US, "%02d:%02d:%02d.%d", hours, minutes, seconds, (elapsed / 100L) % 10L)
-                    : String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds);
-        } else {
-            value = showTenths
-                    ? String.format(Locale.US, "%02d:%02d.%d", minutes, seconds, (elapsed / 100L) % 10L)
-                    : String.format(Locale.US, "%02d:%02d", minutes, seconds);
+
+        if (timeView != null) {
+            String value;
+            if (hours > 0L) {
+                value = showTenths
+                        ? String.format(Locale.US, "%02d:%02d:%02d.%d", hours, minutes, seconds, (elapsed / 100L) % 10L)
+                        : String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds);
+            } else {
+                value = showTenths
+                        ? String.format(Locale.US, "%02d:%02d.%d", minutes, seconds, (elapsed / 100L) % 10L)
+                        : String.format(Locale.US, "%02d:%02d", minutes, seconds);
+            }
+            timeView.setText(value);
         }
-        timeView.setText(value);
-        if (toggleView != null) toggleView.setText(running ? "Ⅱ" : "▶");
+
+        if (edgeSecondsView != null) {
+            edgeSecondsView.setText(String.format(Locale.US, "%02d", seconds));
+        }
+
+        if (toggleView != null) {
+            toggleView.setText(running ? "Ⅱ" : "▶");
+        }
     }
 
     private void scheduleTick() {
         handler.removeCallbacks(tickRunnable);
         updateTimeText();
-        if (running && !collapsed && overlayRoot != null) {
-            handler.postDelayed(tickRunnable, 50L);
+        if (running && overlayRoot != null) {
+            handler.postDelayed(tickRunnable, 100L);
         }
     }
 
     private void collapseToEdge(boolean animate) {
         if (overlayRoot == null || windowParams == null) return;
-        collapsed = true;
-        saveWindowState();
-        handler.removeCallbacks(tickRunnable);
 
+        collapsed = true;
         expandedPanel.setVisibility(View.GONE);
-        edgeHandle.setVisibility(View.VISIBLE);
+        edgeSecondsView.setVisibility(View.VISIBLE);
         windowParams.width = dp(38);
-        windowParams.height = dp(64);
+        windowParams.height = dp(48);
         windowParams.y = clampY(windowParams.y);
-        configureHandleDirection();
         safeUpdateLayout();
+        updateTimeText();
 
         int target = collapsedX();
         if (animate) animateX(target); else setX(target);
+        saveWindowState();
     }
 
     private void expandFromEdge(boolean animate) {
         if (overlayRoot == null || windowParams == null) return;
-        if (!collapsed && ACTION_SHOW != null) {
+
+        if (!collapsed) {
             snapExpanded(animate);
             scheduleTick();
             return;
         }
-        collapsed = false;
-        saveWindowState();
 
-        edgeHandle.setVisibility(View.GONE);
+        collapsed = false;
+        edgeSecondsView.setVisibility(View.GONE);
         expandedPanel.setVisibility(View.VISIBLE);
         windowParams.width = WindowManager.LayoutParams.WRAP_CONTENT;
         windowParams.height = WindowManager.LayoutParams.WRAP_CONTENT;
         safeUpdateLayout();
+
         overlayRoot.post(() -> {
             snapExpanded(animate);
             scheduleTick();
         });
+        saveWindowState();
     }
 
     private void snapExpanded(boolean animate) {
         if (overlayRoot == null || windowParams == null) return;
+
         int width = overlayRoot.getWidth();
-        if (width <= 0) width = dp(250);
+        if (width <= 0) width = dp(244);
         int target = sideLeft
                 ? dp(6)
                 : Math.max(dp(6), screenWidth() - width - dp(6));
+
         windowParams.y = clampY(windowParams.y);
-        if (collapseView != null) collapseView.setText(sideLeft ? "‹" : "›");
         safeUpdateLayout();
         if (animate) animateX(target); else setX(target);
     }
 
     private int collapsedX() {
         int width = dp(38);
-        int exposed = dp(15);
+        int exposed = dp(25);
         return sideLeft ? -(width - exposed) : screenWidth() - exposed;
-    }
-
-    private void configureHandleDirection() {
-        if (edgeHandle == null) return;
-        if (sideLeft) {
-            edgeHandle.setText("›");
-            edgeHandle.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
-            edgeHandle.setPadding(0, 0, dp(2), 0);
-        } else {
-            edgeHandle.setText("‹");
-            edgeHandle.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
-            edgeHandle.setPadding(dp(2), 0, 0, 0);
-        }
     }
 
     private void animateX(int targetX) {
         if (windowParams == null) return;
         if (snapAnimator != null) snapAnimator.cancel();
+
         snapAnimator = ValueAnimator.ofInt(windowParams.x, targetX);
         snapAnimator.setDuration(170L);
         snapAnimator.addUpdateListener(animation -> setX((Integer) animation.getAnimatedValue()));
@@ -415,10 +418,12 @@ public class StopwatchService extends Service {
     }
 
     private void applyAppearance() {
-        if (expandedPanel == null || edgeHandle == null) return;
+        if (expandedPanel == null || edgeSecondsView == null) return;
+
         int theme = AppPrefs.getTheme(this);
         int background;
         int foreground;
+
         switch (theme) {
             case AppPrefs.THEME_DARK:
                 background = Color.rgb(48, 52, 57);
@@ -444,28 +449,27 @@ public class StopwatchService extends Service {
         panelBackground.setCornerRadius(dp(16));
         expandedPanel.setBackground(panelBackground);
 
-        GradientDrawable handleBackground = new GradientDrawable();
-        handleBackground.setColor(background);
-        handleBackground.setCornerRadius(dp(14));
-        edgeHandle.setBackground(handleBackground);
+        GradientDrawable secondsBackground = new GradientDrawable();
+        secondsBackground.setColor(background);
+        secondsBackground.setCornerRadius(dp(10));
+        edgeSecondsView.setBackground(secondsBackground);
 
         float alpha = AppPrefs.getOpacity(this) / 100f;
         expandedPanel.setAlpha(alpha);
-        edgeHandle.setAlpha(alpha);
+        edgeSecondsView.setAlpha(Math.max(0.55f, alpha));
 
         timeView.setTextSize(AppPrefs.getTextSize(this));
         timeView.setTextColor(foreground);
         toggleView.setTextColor(foreground);
         resetView.setTextColor(foreground);
-        collapseView.setTextColor(foreground);
         closeView.setTextColor(foreground);
-        edgeHandle.setTextColor(foreground);
-        configureHandleDirection();
+        edgeSecondsView.setTextColor(foreground);
     }
 
     private void loadStopwatchState() {
         SharedPreferences prefs = getSharedPreferences(STATE_PREFS, MODE_PRIVATE);
         boolean initialized = prefs.getBoolean("initialized", false);
+
         if (!initialized) {
             accumulatedMs = 0L;
             startedAtRealtime = SystemClock.elapsedRealtime();
@@ -473,9 +477,11 @@ public class StopwatchService extends Service {
             saveStopwatchState();
             return;
         }
+
         accumulatedMs = Math.max(0L, prefs.getLong("accumulated_ms", 0L));
         startedAtRealtime = prefs.getLong("started_at", SystemClock.elapsedRealtime());
         running = prefs.getBoolean("running", false);
+
         if (running && startedAtRealtime > SystemClock.elapsedRealtime()) {
             running = false;
             accumulatedMs = 0L;
@@ -512,7 +518,7 @@ public class StopwatchService extends Service {
 
     private int clampY(int value) {
         int viewHeight = overlayRoot == null || overlayRoot.getHeight() <= 0
-                ? (collapsed ? dp(64) : dp(56))
+                ? (collapsed ? dp(48) : dp(56))
                 : overlayRoot.getHeight();
         int max = Math.max(dp(8), screenHeight() - viewHeight - dp(24));
         return Math.max(dp(8), Math.min(max, value));
@@ -536,12 +542,14 @@ public class StopwatchService extends Service {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
                 "Cronómetro flotante",
                 NotificationManager.IMPORTANCE_LOW);
         channel.setDescription("Mantiene activo el cronómetro lateral");
         channel.setShowBadge(false);
+
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) manager.createNotificationChannel(channel);
     }
@@ -561,17 +569,18 @@ public class StopwatchService extends Service {
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
+
         return builder
-                .setSmallIcon(com.leonardo.edgestopwatch.R.drawable.ic_stopwatch)
+                .setSmallIcon(R.drawable.ic_stopwatch)
                 .setContentTitle("Cronómetro lateral")
                 .setContentText(running ? "En marcha" : "En pausa")
                 .setContentIntent(openPending)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_SERVICE)
-                .addAction(com.leonardo.edgestopwatch.R.drawable.ic_stopwatch, running ? "Pausar" : "Continuar", togglePending)
-                .addAction(com.leonardo.edgestopwatch.R.drawable.ic_stopwatch, "Reiniciar", resetPending)
-                .addAction(com.leonardo.edgestopwatch.R.drawable.ic_stopwatch, "Cerrar", stopPending)
+                .addAction(R.drawable.ic_stopwatch, running ? "Pausar" : "Continuar", togglePending)
+                .addAction(R.drawable.ic_stopwatch, "Reiniciar", resetPending)
+                .addAction(R.drawable.ic_stopwatch, "Cerrar", stopPending)
                 .build();
     }
 
@@ -590,25 +599,29 @@ public class StopwatchService extends Service {
     }
 
     private void updateNotification() {
-        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        NotificationManager manager =
+                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         if (manager != null) manager.notify(NOTIFICATION_ID, buildNotification());
     }
 
     private final class DragTouchListener implements View.OnTouchListener {
         private final Runnable tapAction;
+        private final boolean collapseOnSwipe;
         private float downRawX;
         private float downRawY;
         private int startX;
         private int startY;
         private boolean moved;
 
-        DragTouchListener(Runnable tapAction) {
+        DragTouchListener(Runnable tapAction, boolean collapseOnSwipe) {
             this.tapAction = tapAction;
+            this.collapseOnSwipe = collapseOnSwipe;
         }
 
         @Override
         public boolean onTouch(View view, MotionEvent event) {
             if (windowParams == null) return false;
+
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     if (snapAnimator != null) snapAnimator.cancel();
@@ -632,12 +645,27 @@ public class StopwatchService extends Service {
 
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
+                    float totalDx = event.getRawX() - downRawX;
+                    float totalDy = event.getRawY() - downRawY;
+
                     if (!moved && event.getActionMasked() == MotionEvent.ACTION_UP) {
                         tapAction.run();
+                        return true;
+                    }
+
+                    if (collapseOnSwipe
+                            && Math.abs(totalDx) >= dp(64)
+                            && Math.abs(totalDx) > Math.abs(totalDy) * 1.15f) {
+                        sideLeft = totalDx < 0f;
+                        collapseToEdge(true);
                     } else {
                         int center = windowParams.x + Math.max(dp(20), view.getWidth() / 2);
                         sideLeft = center < screenWidth() / 2;
-                        if (collapsed) collapseToEdge(true); else snapExpanded(true);
+                        if (collapsed) {
+                            collapseToEdge(true);
+                        } else {
+                            snapExpanded(true);
+                        }
                         saveWindowState();
                     }
                     return true;
