@@ -1,10 +1,23 @@
-# BurbujaGPT V8
+# BurbujaGPT V9
 
 Aplicacion Android en Java que abre los chats reales de ChatGPT desde una burbuja, sin usar la API de OpenAI.
 
-## Correccion principal de V8
+## Correccion principal de V9
 
-V7 podia cerrarse al registrar o expandir la burbuja en algunos dispositivos Samsung. V8 cambia el arranque para evitar ese cierre:
+V8 podia conservar una referencia a la pagina aunque Android ya hubiera detenido el proceso que la renderizaba. El resultado era un panel vacio que no respondia ni al recargar. V9 corrige esa ruta y reduce el consumo grafico del WebView:
+
+- Detecta `onRenderProcessGone`, elimina el WebView inutilizable y restaura la ultima URL segura con las mismas cookies.
+- Mantiene un cliente liviano de recuperacion incluso cuando la pagina esta separada de la actividad.
+- Si la primera carga no muestra contenido en 30 segundos, reconstruye el panel una vez automaticamente.
+- **Reintentar** y **Reiniciar panel web** crean un motor limpio sin borrar la sesion.
+- Inicializa Chromium al activar el servicio para reducir la espera del primer toque.
+- Desactiva `offscreenPreRaster`, que mantenia mosaicos de una pagina pesada fuera de pantalla y elevaba el uso de memoria.
+- Elimina la capa GPU permanente adicional; la ventana conserva la aceleracion grafica normal de Android.
+- Mantiene la cache HTTP normal, JavaScript, almacenamiento DOM, cookies y prioridad del renderizador.
+
+## Burbuja nativa y respaldo Samsung
+
+Se conserva la correccion de V8 para el registro de la conversacion en One UI:
 
 - La notificacion del servicio en primer plano y la notificacion de conversacion son independientes.
 - La conversacion usa un acceso directo nuevo, permanente y compatible con Android 11 o posterior.
@@ -20,19 +33,20 @@ V7 podia cerrarse al registrar o expandir la burbuja en algunos dispositivos Sam
 - El WebView no se pausa al minimizar.
 - El renderizador conserva prioridad alta cuando deja de estar visible.
 - La pagina se mantiene en memoria mientras el servicio sigue activo.
+- Si Android libera el renderizador por memoria, el panel vuelve a crearse en vez de quedar vacio.
 - La ventana nativa evita una animacion duplicada al colapsarse.
 - Si la ventana nativa falla al crearse, se abre un panel compatible con un WebView limpio.
 
 ## Uso en Samsung
 
-1. Instala y abre **BurbujaGPT V8**.
+1. Instala y abre **BurbujaGPT V9**.
 2. Selecciona **Burbuja nativa de Android**.
 3. Pulsa **Configurar burbujas de Android / Samsung**.
 4. Permite notificaciones y burbujas.
 5. Comprueba **Ajustes > Notificaciones > Ajustes avanzados > Notificaciones flotantes > Burbujas**.
 6. Vuelve a la aplicacion y pulsa **Activar globo**.
 
-Si One UI publica la conversacion solo como una notificacion normal, V8 mostrara el globo compatible despues de unos segundos. El permiso **Aparecer encima** debe estar activo para ese respaldo.
+Si One UI publica la conversacion solo como una notificacion normal, V9 mostrara el globo compatible despues de unos segundos. El permiso **Aparecer encima** debe estar activo para ese respaldo.
 
 ## Modos
 
@@ -51,6 +65,6 @@ Si One UI publica la conversacion solo como una notificacion normal, V8 mostrara
 
 ## Compilar
 
-En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como `BurbujaGPT-V8-debug-apk`.
+En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como `BurbujaGPT-V9-debug-apk`.
 
 El proyecto utiliza `targetSdk 35` y `minSdk 23`.
