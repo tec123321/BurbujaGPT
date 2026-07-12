@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.edgestopwatch'
         minSdk 23
         targetSdk 33
-        versionCode 12
-        versionName '1.11-permanent'
+        versionCode 13
+        versionName '1.12-timer-green-edge'
     }
 }
 
