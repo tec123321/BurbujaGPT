@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.burbujagpt'
         minSdk 24
         targetSdk 35
-        versionCode 15
-        versionName '1.5-virtual-display-bubble'
+        versionCode 16
+        versionName '1.5.1-public-virtual-display'
     }
 
     buildFeatures {
