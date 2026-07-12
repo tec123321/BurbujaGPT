@@ -1,13 +1,16 @@
 package com.leonardo.burbujagpt;
 
+import android.app.ActivityOptions;
 import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.view.Surface;
 
+import java.lang.ref.WeakReference;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
@@ -42,6 +45,8 @@ final class ShizukuDisplayBridge {
 
     private static volatile IDisplayBridge service;
     private static volatile boolean binding;
+    private static volatile Context applicationContext;
+    private static volatile WeakReference<Context> ownerContext = new WeakReference<>(null);
     private static Shizuku.UserServiceArgs serviceArgs;
 
     private static final ServiceConnection CONNECTION = new ServiceConnection() {
@@ -102,6 +107,9 @@ final class ShizukuDisplayBridge {
     }
 
     static void connect(Context context, ConnectionCallback callback) {
+        applicationContext = context.getApplicationContext();
+        ownerContext = new WeakReference<>(context);
+
         IDisplayBridge current = service;
         if (current != null && current.asBinder().pingBinder()) {
             callback.onReady();
@@ -231,17 +239,82 @@ final class ShizukuDisplayBridge {
             ResultCallback callback
     ) {
         COMMANDS.execute(() -> {
-            int result = 1;
+            int directResult = launchAsDisplayOwner(component, displayId, multipleTask);
+            if (directResult == 0) {
+                if (callback != null) callback.onResult(0);
+                return;
+            }
+
+            int shellResult = 1;
             IDisplayBridge current = service;
             if (current != null) {
                 try {
-                    result = current.launch(component, userId, displayId, multipleTask);
+                    shellResult = current.launch(component, userId, displayId, multipleTask);
                 } catch (RemoteException | RuntimeException ignored) {
                     service = null;
                 }
             }
-            if (callback != null) callback.onResult(result);
+
+            Context context = applicationContext;
+            if (shellResult != 0 && context != null) {
+                AppPreferences.recordMessage(
+                        context,
+                        "Inicio en display rechazado. App=" + directResult + ", Shizuku=" + shellResult
+                );
+            }
+            if (callback != null) callback.onResult(shellResult);
         });
+    }
+
+    private static int launchAsDisplayOwner(
+            String flattenedComponent,
+            int displayId,
+            boolean multipleTask
+    ) {
+        Context context = ownerContext.get();
+        if (context == null) context = applicationContext;
+        if (context == null || displayId < 0) return 90;
+
+        ComponentName component = ComponentName.unflattenFromString(flattenedComponent);
+        if (component == null) return 91;
+
+        try {
+            Intent packageIntent = context.getPackageManager()
+                    .getLaunchIntentForPackage(component.getPackageName());
+            Intent target = packageIntent == null
+                    ? new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                    : new Intent(packageIntent);
+            target.setComponent(component);
+            target.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+            if (multipleTask) {
+                target.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK | Intent.FLAG_ACTIVITY_NEW_DOCUMENT);
+            } else {
+                target.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            }
+
+            ActivityOptions options = ActivityOptions.makeBasic();
+            options.setLaunchDisplayId(displayId);
+            context.startActivity(target, options.toBundle());
+            return 0;
+        } catch (SecurityException error) {
+            recordDirectLaunchError("SecurityException", error);
+            return 92;
+        } catch (RuntimeException error) {
+            recordDirectLaunchError(error.getClass().getSimpleName(), error);
+            return 93;
+        }
+    }
+
+    private static void recordDirectLaunchError(String type, Throwable error) {
+        Context context = applicationContext;
+        if (context == null) return;
+        String message = error.getMessage();
+        if (message == null) message = "sin detalle";
+        if (message.length() > 240) message = message.substring(0, 240);
+        AppPreferences.recordMessage(
+                context,
+                "Inicio directo en display falló: " + type + " · " + message
+        );
     }
 
     static void injectTouch(
