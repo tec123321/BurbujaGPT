@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.burbujagpt'
         minSdk 24
         targetSdk 35
-        versionCode 14
-        versionName '1.3.1-adaptada-notificaciones'
+        versionCode 15
+        versionName '1.3.2-adaptada-multichat'
     }
 
     compileOptions {
