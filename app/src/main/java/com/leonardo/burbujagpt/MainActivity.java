@@ -22,7 +22,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** Configura varias conversaciones Android que alojan ChatGPT oficial. */
+/** Configura varios accesos de burbuja que recuperan ChatGPT oficial de forma estable. */
 public class MainActivity extends Activity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1300;
     private static final int BACKGROUND = 0xFF050505;
@@ -83,7 +83,7 @@ public class MainActivity extends Activity {
         titleParams.setMargins(0, dp(14), 0, 0);
         root.addView(title, titleParams);
 
-        TextView subtitle = text("Varios chats de ChatGPT en burbujas nativas", 15, MUTED, false);
+        TextView subtitle = text("Varios accesos estables a ChatGPT en burbujas nativas", 15, MUTED, false);
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = matchWrap();
         subtitleParams.setMargins(0, dp(6), 0, dp(18));
@@ -91,13 +91,13 @@ public class MainActivity extends Activity {
 
         LinearLayout explanation = card();
         explanation.addView(text(
-                "Mantiene el funcionamiento de V13 Adaptada. El primer botón recupera el último chat y el segundo crea otra burbuja independiente.",
+                "Conserva exactamente el lanzamiento estable de V13 original. Cada botón crea otra burbuja, pero todas recuperan la actividad oficial de ChatGPT para evitar que el chat se minimice o desaparezca.",
                 14,
                 TEXT,
                 false
         ), matchWrap());
         TextView session = text(
-                "Sigue usando ChatGPT oficial: conserva sesión, Plus, historial, voz y actualizaciones. Cuando llega una respuesta, reaparece el último chat utilizado.",
+                "Sigue usando ChatGPT oficial: conserva sesión, Plus, historial, voz y actualizaciones. Cuando llega una respuesta, reaparece el último acceso utilizado.",
                 12,
                 MUTED,
                 false
@@ -111,14 +111,14 @@ public class MainActivity extends Activity {
         root.addView(statusView, cardParams());
 
         activateButton = button(
-                "Abrir o recuperar último chat",
+                "Abrir o recuperar ChatGPT",
                 true,
                 view -> beginActivation(false)
         );
         root.addView(activateButton, buttonParams());
 
         newChatButton = button(
-                "Crear otro chat",
+                "Crear otro globo",
                 false,
                 view -> beginActivation(true)
         );
@@ -138,7 +138,7 @@ public class MainActivity extends Activity {
         ), buttonParams());
 
         root.addView(button(
-                "Eliminar todos los chats",
+                "Eliminar todos los globos",
                 false,
                 view -> deactivateAllBubbles()
         ), buttonParams());
@@ -148,7 +148,7 @@ public class MainActivity extends Activity {
         root.addView(diagnosticView, cardParams());
 
         TextView help = text(
-                "Para abrir varios chats, pulsa Crear otro chat cada vez. Android mostrará Chat 1, Chat 2, Chat 3, etc.",
+                "Pulsa Crear otro globo para añadir Chat 1, Chat 2, Chat 3, etc. Todos usan el mecanismo estable de V13 original.",
                 12,
                 MUTED,
                 false
@@ -191,7 +191,7 @@ public class MainActivity extends Activity {
         try {
             AppPreferences.clearLastError(this);
             NativeBubblePublisher.publish(this, true);
-            Toast.makeText(this, "Último chat publicado", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "ChatGPT publicado", Toast.LENGTH_SHORT).show();
             afterPublish();
         } catch (RuntimeException | LinkageError error) {
             handlePublishError(error);
@@ -202,7 +202,7 @@ public class MainActivity extends Activity {
         try {
             AppPreferences.clearLastError(this);
             int sequence = NativeBubblePublisher.publishNewChat(this, true);
-            Toast.makeText(this, "Chat " + sequence + " creado", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Globo " + sequence + " creado", Toast.LENGTH_SHORT).show();
             afterPublish();
         } catch (RuntimeException | LinkageError error) {
             handlePublishError(error);
@@ -222,7 +222,7 @@ public class MainActivity extends Activity {
 
     private void deactivateAllBubbles() {
         NativeBubblePublisher.cancel(this);
-        Toast.makeText(this, "Todos los chats fueron eliminados", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Todos los globos fueron eliminados", Toast.LENGTH_SHORT).show();
         getWindow().getDecorView().postDelayed(this::updateStatus, 180);
     }
 
@@ -257,21 +257,21 @@ public class MainActivity extends Activity {
                 != PackageManager.PERMISSION_GRANTED) {
             statusView.setText("Estado: falta permitir notificaciones");
             statusView.setTextColor(0xFFFBBF24);
-            activateButton.setText("Permitir y abrir primer chat");
+            activateButton.setText("Permitir y abrir ChatGPT");
             activateButton.setEnabled(true);
             newChatButton.setEnabled(true);
         } else {
             String chatLabel = activeChats == 1
-                    ? "1 chat publicado"
-                    : activeChats + " chats publicados";
+                    ? "1 globo publicado"
+                    : activeChats + " globos publicados";
             String listenerLabel = listenerEnabled
                     ? "aparición por mensajes activa"
                     : "falta acceso a mensajes";
             statusView.setText("Estado: " + chatLabel + " · " + listenerLabel);
             statusView.setTextColor(listenerEnabled ? 0xFF34D399 : 0xFFFBBF24);
             activateButton.setText(activeChats > 0
-                    ? "Abrir o recuperar último chat"
-                    : "Activar primer chat");
+                    ? "Abrir o recuperar ChatGPT"
+                    : "Activar primer globo");
             activateButton.setEnabled(true);
             newChatButton.setEnabled(true);
         }
