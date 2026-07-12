@@ -50,7 +50,7 @@ final class VirtualDisplaySessions {
         }
 
         try {
-            VirtualDisplay display = SystemDisplayEngine.createVirtualDisplay(
+            VirtualDisplay display = ShellDisplayCreator.create(
                     context,
                     "Globo GPT " + bubbleId,
                     width,
@@ -67,7 +67,7 @@ final class VirtualDisplaySessions {
             }
             AppPreferences.recordMessage(
                     context,
-                    "Motor V16 no pudo crear el display confiable: " + detail
+                    "Motor V16.1 no pudo crear el display confiable: " + detail
             );
             callback.onError("No se pudo crear la pantalla virtual privilegiada");
         }
