@@ -1,0 +1,98 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.leonardo.edgestopwatch'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.leonardo.edgestopwatch'
+        minSdk 23
+        targetSdk 33
+        versionCode 18
+        versionName '1.17-prominent-finish-alert'
+    }
+}
+
+def squareIndicatorPatch = rootProject.file('tools/patch_stopwatch_squares.py')
+def collapsedBorderPatch = rootProject.file('tools/patch_stopwatch_border.py')
+def compactUpdatePatch = rootProject.file('tools/patch_stopwatch_v110.py')
+def finalUpdatePatch = rootProject.file('tools/patch_stopwatch_v111.py')
+def configurableEdgePatch = rootProject.file('tools/patch_stopwatch_v114.py')
+def activeFillPatch = rootProject.file('tools/patch_stopwatch_v115.py')
+def timerFinishBlinkPatch = rootProject.file('tools/patch_stopwatch_v116.py')
+def prominentFinishAlertPatch = rootProject.file('tools/patch_stopwatch_v117.py')
+
+tasks.register('patchStopwatchSquareIndicator', Exec) {
+    inputs.file(squareIndicatorPatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/MainActivity.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', squareIndicatorPatch.absolutePath
+}
+
+tasks.register('patchStopwatchCollapsedBorder', Exec) {
+    dependsOn tasks.named('patchStopwatchSquareIndicator')
+    inputs.file(collapsedBorderPatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', collapsedBorderPatch.absolutePath
+}
+
+tasks.register('patchStopwatchCompactUpdate', Exec) {
+    dependsOn tasks.named('patchStopwatchCollapsedBorder')
+    inputs.file(compactUpdatePatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/MainActivity.java'))
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/AppPrefs.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', compactUpdatePatch.absolutePath
+}
+
+tasks.register('patchStopwatchFinalUpdate', Exec) {
+    dependsOn tasks.named('patchStopwatchCompactUpdate')
+    inputs.file(finalUpdatePatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', finalUpdatePatch.absolutePath
+}
+
+tasks.register('patchStopwatchConfigurableEdge', Exec) {
+    dependsOn tasks.named('patchStopwatchFinalUpdate')
+    inputs.file(configurableEdgePatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/MainActivity.java'))
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/AppPrefs.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', configurableEdgePatch.absolutePath
+}
+
+tasks.register('patchStopwatchActiveFill', Exec) {
+    dependsOn tasks.named('patchStopwatchConfigurableEdge')
+    inputs.file(activeFillPatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/MainActivity.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', activeFillPatch.absolutePath
+}
+
+tasks.register('patchStopwatchTimerFinishBlink', Exec) {
+    dependsOn tasks.named('patchStopwatchActiveFill')
+    inputs.file(timerFinishBlinkPatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', timerFinishBlinkPatch.absolutePath
+}
+
+tasks.register('patchStopwatchProminentFinishAlert', Exec) {
+    dependsOn tasks.named('patchStopwatchTimerFinishBlink')
+    inputs.file(prominentFinishAlertPatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', prominentFinishAlertPatch.absolutePath
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('patchStopwatchProminentFinishAlert')
+}
