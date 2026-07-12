@@ -11,15 +11,20 @@ import android.content.Intent;
 import android.content.LocusId;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
+import android.text.TextUtils;
 
 import java.util.Arrays;
 import java.util.Collections;
 
-/** Publica una conversación real de Android cuyo contenido abre ChatGPT instalado. */
+/** Publica una conversación Android cuyo contenido abre ChatGPT oficial. */
 final class NativeBubblePublisher {
     static final String CHATGPT_PACKAGE = "com.openai.chatgpt";
 
@@ -32,6 +37,10 @@ final class NativeBubblePublisher {
     }
 
     static void publish(Context context, boolean autoExpand) {
+        publish(context, autoExpand, "Toca la burbuja para abrir la aplicación oficial");
+    }
+
+    static void publish(Context context, boolean autoExpand, String message) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             throw new IllegalStateException("Las burbujas nativas requieren Android 11 o posterior");
         }
@@ -43,11 +52,13 @@ final class NativeBubblePublisher {
         }
 
         ensureChannel(notifications);
+        Icon officialIcon = loadOfficialChatGptIcon(context);
         Person assistant = new Person.Builder()
                 .setName("ChatGPT")
+                .setIcon(officialIcon)
                 .setImportant(true)
                 .build();
-        publishShortcut(context, shortcuts, assistant);
+        publishShortcut(context, shortcuts, assistant, officialIcon);
 
         Intent bubbleIntent = createBubbleIntent(context);
         int mutableFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -69,14 +80,17 @@ final class NativeBubblePublisher {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
+        String safeMessage = TextUtils.isEmpty(message)
+                ? "Nueva respuesta de ChatGPT"
+                : message;
         Person user = new Person.Builder().setName("Tú").build();
         Notification.MessagingStyle style = new Notification.MessagingStyle(user)
                 .setConversationTitle("ChatGPT")
-                .addMessage("Toca la burbuja para abrir la aplicación oficial", System.currentTimeMillis(), assistant);
+                .addMessage(safeMessage, System.currentTimeMillis(), assistant);
 
         Notification.BubbleMetadata bubble = new Notification.BubbleMetadata.Builder(
                 bubbleIntentToken,
-                Icon.createWithResource(context, R.drawable.ic_bubble)
+                officialIcon
         )
                 .setDesiredHeight(640)
                 .setAutoExpandBubble(autoExpand)
@@ -86,7 +100,7 @@ final class NativeBubblePublisher {
         Notification notification = new Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_bubble)
                 .setContentTitle("ChatGPT")
-                .setContentText("Aplicación oficial dentro de una burbuja Android")
+                .setContentText(safeMessage)
                 .setContentIntent(contentIntent)
                 .setStyle(style)
                 .setCategory(Notification.CATEGORY_MESSAGE)
@@ -94,8 +108,9 @@ final class NativeBubblePublisher {
                 .setLocusId(new LocusId(SHORTCUT_ID))
                 .addPerson(assistant)
                 .setBubbleMetadata(bubble)
-                .setOnlyAlertOnce(true)
-                .setShowWhen(false)
+                .setOnlyAlertOnce(false)
+                .setShowWhen(true)
+                .setWhen(System.currentTimeMillis())
                 .setAutoCancel(false)
                 .build();
 
@@ -119,14 +134,15 @@ final class NativeBubblePublisher {
     private static void publishShortcut(
             Context context,
             ShortcutManager shortcuts,
-            Person assistant
+            Person assistant,
+            Icon officialIcon
     ) {
         Intent bubbleIntent = createBubbleIntent(context);
 
         ShortcutInfo shortcut = new ShortcutInfo.Builder(context, SHORTCUT_ID)
                 .setShortLabel("ChatGPT")
                 .setLongLabel("ChatGPT en burbuja")
-                .setIcon(Icon.createWithResource(context, R.drawable.ic_bubble))
+                .setIcon(officialIcon)
                 .setCategories(Collections.singleton(CATEGORY))
                 .setActivity(new ComponentName(context, MainActivity.class))
                 .setIntent(bubbleIntent)
@@ -146,6 +162,35 @@ final class NativeBubblePublisher {
                 .setAction(Intent.ACTION_VIEW)
                 .setData(Uri.parse("burbujagpt://conversation/chatgpt"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+    }
+
+    static String extractMessage(Notification notification) {
+        if (notification == null) return "Nueva respuesta de ChatGPT";
+        Bundle extras = notification.extras;
+        if (extras == null) return "Nueva respuesta de ChatGPT";
+
+        CharSequence value = extras.getCharSequence(Notification.EXTRA_BIG_TEXT);
+        if (TextUtils.isEmpty(value)) value = extras.getCharSequence(Notification.EXTRA_TEXT);
+        if (TextUtils.isEmpty(value)) value = extras.getCharSequence(Notification.EXTRA_SUB_TEXT);
+        if (TextUtils.isEmpty(value)) return "Nueva respuesta de ChatGPT";
+
+        String result = value.toString().replace('\n', ' ').trim();
+        if (result.length() > 160) result = result.substring(0, 159) + "…";
+        return result.isEmpty() ? "Nueva respuesta de ChatGPT" : result;
+    }
+
+    private static Icon loadOfficialChatGptIcon(Context context) {
+        try {
+            Drawable drawable = context.getPackageManager().getApplicationIcon(CHATGPT_PACKAGE);
+            int size = Math.max(192, Math.round(96 * context.getResources().getDisplayMetrics().density));
+            Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(bitmap);
+            drawable.setBounds(0, 0, size, size);
+            drawable.draw(canvas);
+            return Icon.createWithBitmap(bitmap);
+        } catch (Exception error) {
+            return Icon.createWithResource(context, R.drawable.ic_bubble);
+        }
     }
 
     static void cancel(Context context) {
@@ -174,7 +219,8 @@ final class NativeBubblePublisher {
         if (notifications == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null;
         try {
             for (StatusBarNotification item : notifications.getActiveNotifications()) {
-                if (item.getId() == NOTIFICATION_ID && context.getPackageName().equals(item.getPackageName())) {
+                if (item.getId() == NOTIFICATION_ID
+                        && context.getPackageName().equals(item.getPackageName())) {
                     return item;
                 }
             }
