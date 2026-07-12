@@ -16,8 +16,8 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 /**
- * Actividad anfitriona que Android coloca en la burbuja. Desde esa misma tarea
- * inicia la actividad oficial instalada, sin WebView ni modo de ventana libre.
+ * Actividad anfitriona que Android coloca en cada burbuja. Cada instancia conserva
+ * su propia tarea y abre ChatGPT oficial dentro de ella, sin WebView ni Shizuku.
  */
 public class NativeBubbleActivity extends Activity {
     private static final String STATE_ATTEMPTED = "attempted";
@@ -26,10 +26,12 @@ public class NativeBubbleActivity extends Activity {
     private TextView status;
     private ProgressBar progress;
     private boolean attempted;
+    private int chatSequence = 1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        chatSequence = NativeBubblePublisher.getChatSequence(getIntent());
         getWindow().setStatusBarColor(0xFF09090B);
         getWindow().setNavigationBarColor(0xFF09090B);
         setContentView(buildUi());
@@ -42,8 +44,9 @@ public class NativeBubbleActivity extends Activity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        chatSequence = NativeBubblePublisher.getChatSequence(intent);
         attempted = false;
-        showLoading("Abriendo ChatGPT…");
+        showLoading("Abriendo ChatGPT · Chat " + chatSequence + "…");
         root.postDelayed(this::launchOfficialInsideBubble, 80);
     }
 
@@ -66,13 +69,17 @@ public class NativeBubbleActivity extends Activity {
         }
 
         Intent target = new Intent(launcher);
-        target.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        // No se usa REORDER_TO_FRONT: esa bandera hacía que todos los globos
+        // recuperaran la misma tarea de ChatGPT. Al iniciarlo desde cada tarea
+        // anfitriona, Android puede conservar una instancia por burbuja.
+        target.setFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        target.putExtra(NativeBubblePublisher.EXTRA_CHAT_SEQUENCE, chatSequence);
 
         try {
             startActivity(target);
             overridePendingTransition(0, 0);
             AppPreferences.clearLastError(this);
-            status.setText("ChatGPT se abrió dentro de la tarea de la burbuja.");
+            status.setText("ChatGPT se abrió en Chat " + chatSequence + ".");
         } catch (ActivityNotFoundException | SecurityException | IllegalArgumentException error) {
             AppPreferences.recordError(this, "Android rechazó abrir ChatGPT en la burbuja", error);
             showError("Android rechazó insertar la actividad oficial en esta burbuja.");
@@ -86,19 +93,18 @@ public class NativeBubbleActivity extends Activity {
         root.setPadding(dp(24), dp(28), dp(24), dp(28));
         root.setBackgroundColor(0xFF111113);
 
-        TextView icon = text("✦", 34, Color.WHITE, true);
+        TextView icon = text("◎", 36, Color.WHITE, true);
         icon.setGravity(Gravity.CENTER);
-        GradientDrawable iconBackground = new GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF7C3AED, 0xFF0EA5E9, 0xFF10B981}
-        );
+        GradientDrawable iconBackground = new GradientDrawable();
+        iconBackground.setColor(0xFF202020);
         iconBackground.setShape(GradientDrawable.OVAL);
+        iconBackground.setStroke(dp(1), 0xFF505050);
         icon.setBackground(iconBackground);
         LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(68), dp(68));
         iconParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(icon, iconParams);
 
-        TextView title = text("ChatGPT", 22, 0xFFF5F5F5, true);
+        TextView title = text("ChatGPT · Chat " + chatSequence, 22, 0xFFF5F5F5, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(16), 0, dp(8));
