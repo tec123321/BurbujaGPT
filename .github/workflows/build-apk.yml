@@ -25,6 +25,11 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Apply V16 display label
+        shell: bash
+        run: |
+          sed -i 's/Globo GPT V15/Globo GPT V16/g' app/src/main/java/com/leonardo/burbujagpt/MainActivity.java
+
       - name: Build debug APK
         shell: bash
         run: |
@@ -38,12 +43,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-GPT-V15-build-log
+          name: Globo-GPT-V16-build-log
           path: build.log
 
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-GPT-V15-virtual-display-bubble
+          name: Globo-GPT-V16-superwindow-engine
           path: app/build/outputs/apk/debug/app-debug.apk
