@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.burbujagpt'
         minSdk 24
         targetSdk 35
-        versionCode 18
-        versionName '1.6-superwindow-engine'
+        versionCode 19
+        versionName '1.6.1-shell-owner-fix'
     }
 
     buildFeatures {
