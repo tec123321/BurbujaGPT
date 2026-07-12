@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.edgestopwatch'
         minSdk 23
         targetSdk 33
-        versionCode 14
-        versionName '1.13-timer-only-green-edge'
+        versionCode 15
+        versionName '1.14-configurable-edge-progress'
     }
 }
 
@@ -19,6 +19,7 @@ def squareIndicatorPatch = rootProject.file('tools/patch_stopwatch_squares.py')
 def collapsedBorderPatch = rootProject.file('tools/patch_stopwatch_border.py')
 def compactUpdatePatch = rootProject.file('tools/patch_stopwatch_v110.py')
 def finalUpdatePatch = rootProject.file('tools/patch_stopwatch_v111.py')
+def configurableEdgePatch = rootProject.file('tools/patch_stopwatch_v114.py')
 
 tasks.register('patchStopwatchSquareIndicator', Exec) {
     inputs.file(squareIndicatorPatch)
@@ -54,6 +55,16 @@ tasks.register('patchStopwatchFinalUpdate', Exec) {
     commandLine 'python3', finalUpdatePatch.absolutePath
 }
 
-tasks.named('preBuild').configure {
+tasks.register('patchStopwatchConfigurableEdge', Exec) {
     dependsOn tasks.named('patchStopwatchFinalUpdate')
+    inputs.file(configurableEdgePatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/MainActivity.java'))
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/AppPrefs.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', configurableEdgePatch.absolutePath
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('patchStopwatchConfigurableEdge')
 }
