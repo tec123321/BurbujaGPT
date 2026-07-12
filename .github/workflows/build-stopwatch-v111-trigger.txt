@@ -1,1 +1,1 @@
-Trigger one-time Cronometro Lateral v1.11 build.
+Trigger Cronometro Lateral v1.12 build: green edge for any running timer.
