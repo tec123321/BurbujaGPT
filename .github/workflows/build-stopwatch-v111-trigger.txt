@@ -1,1 +1,1 @@
-v1.16 · timer completion border blink
+v1.17 · prominent red timer completion alert
