@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.burbujagpt'
         minSdk 24
         targetSdk 35
-        versionCode 17
-        versionName '1.5.2-owner-display-launch'
+        versionCode 18
+        versionName '1.6-superwindow-engine'
     }
 
     buildFeatures {
@@ -24,12 +24,17 @@ android {
         targetCompatibility JavaVersion.VERSION_17
         coreLibraryDesugaringEnabled true
     }
+
+    packagingOptions {
+        resources.excludes.add('META-INF/*')
+    }
 }
 
 dependencies {
     def shizukuVersion = '13.1.5'
     implementation "dev.rikka.shizuku:api:$shizukuVersion"
     implementation "dev.rikka.shizuku:provider:$shizukuVersion"
+    implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:4.3'
     implementation 'androidx.annotation:annotation:1.8.2'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
