@@ -1,1 +1,1 @@
-Trigger Cronometro Lateral v1.14 build: configurable colors, completion separators, and adjustable square count.
+Trigger Cronometro Lateral v1.15 build: active stopwatch uses configurable fill without its own border.
