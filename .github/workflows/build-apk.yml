@@ -25,6 +25,31 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Restore permanent signing key
+        id: signing-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: globogpt-permanent-signing-v1
+
+      - name: Create permanent signing key when missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA \
+              -keysize 3072 \
+              -sigalg SHA256withRSA \
+              -validity 10950 \
+              -dname "CN=Globo GPT Permanent Signing,O=Leonardo,C=PE"
+          fi
+
       - name: Build debug APK
         shell: bash
         run: |
@@ -34,16 +59,40 @@ jobs:
           cat build.log
           exit $status
 
+      - name: Verify APK and collect signing tools
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk | tee signature-verification.txt
+          mkdir -p permanent-build
+          cp app/build/outputs/apk/debug/app-debug.apk permanent-build/Globo-GPT-V13-Adaptada-Multichat-Permanente.apk
+          cp "$HOME/.android/debug.keystore" permanent-build/GloboGPT-permanent-signing-key.jks
+          cp "$BUILD_TOOLS/apksigner" permanent-build/apksigner
+          cp "$BUILD_TOOLS/zipalign" permanent-build/zipalign
+          cat > permanent-build/FIRMA-Y-ACTUALIZACIONES.txt <<'EOF'
+          Globo GPT - firma permanente para actualizaciones
+
+          Alias: androiddebugkey
+          Contraseña del almacén: android
+          Contraseña de la clave: android
+
+          Conserva este paquete de respaldo. Todas las versiones futuras deben firmarse con GloboGPT-permanent-signing-key.jks para instalarse como actualización sin desinstalar.
+          EOF
+          cp signature-verification.txt permanent-build/
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-GPT-V12-build-log
+          name: Globo-GPT-V13-Adaptada-Multichat-Permanente-build-log
           path: build.log
 
-      - name: Upload APK
+      - name: Upload permanent APK and signing backup
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-GPT-V12-Shizuku-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Globo-GPT-V13-Adaptada-Multichat-Permanente
+          path: permanent-build/
+          retention-days: 90
