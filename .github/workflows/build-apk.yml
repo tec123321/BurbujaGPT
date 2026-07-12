@@ -38,12 +38,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-GPT-V12-build-log
+          name: Globo-GPT-V13-build-log
           path: build.log
 
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-GPT-V12-Shizuku-debug-apk
+          name: Globo-GPT-V13-native-app-bubble
           path: app/build/outputs/apk/debug/app-debug.apk
