@@ -1,17 +1,23 @@
 package com.leonardo.burbujagpt;
 
 import android.content.Context;
-import android.content.SharedPreferences;
+import android.hardware.display.DisplayManager;
+import android.hardware.display.VirtualDisplay;
+import android.hardware.display.VirtualDisplayConfig;
+import android.os.Build;
+import android.view.Display;
 import android.view.Surface;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-/** Conserva el identificador de pantalla virtual de cada globo. */
+/**
+ * Mantiene las pantallas virtuales en el proceso normal de Globo GPT. Esta vía
+ * evita que One UI rechace la creación cuando se intenta desde el proceso shell
+ * de Shizuku. Shizuku se usa solamente para abrir ChatGPT e inyectar eventos.
+ */
 final class VirtualDisplaySessions {
-    private static final String PREFS = "globo_gpt_virtual_displays";
-    private static final String KEY_IDS = "session_ids";
-    private static final String PREFIX = "display_";
+    private static final Map<String, VirtualDisplay> DISPLAYS = new ConcurrentHashMap<>();
 
     interface Callback {
         void onReady(int displayId, boolean newlyCreated);
@@ -30,102 +36,140 @@ final class VirtualDisplaySessions {
             Surface surface,
             Callback callback
     ) {
-        int existing = getDisplayId(context, bubbleId);
-        if (existing >= 0) {
-            ShizukuDisplayBridge.updateDisplay(
-                    existing,
-                    width,
-                    height,
-                    densityDpi,
-                    surface,
-                    result -> {
-                        if (result == 0) {
-                            callback.onReady(existing, false);
-                        } else {
-                            forget(context, bubbleId);
-                            create(context, bubbleId, width, height, densityDpi, surface, callback);
-                        }
-                    }
-            );
+        if (surface == null || !surface.isValid()) {
+            callback.onError("La superficie del globo todavía no está lista");
             return;
         }
-        create(context, bubbleId, width, height, densityDpi, surface, callback);
+
+        VirtualDisplay existing = DISPLAYS.get(bubbleId);
+        if (existing != null && existing.getDisplay() != null) {
+            try {
+                existing.resize(
+                        Math.max(320, width),
+                        Math.max(480, height),
+                        Math.max(160, densityDpi)
+                );
+                existing.setSurface(surface);
+                callback.onReady(existing.getDisplay().getDisplayId(), false);
+                return;
+            } catch (RuntimeException error) {
+                release(context, bubbleId);
+            }
+        }
+
+        DisplayManager manager = context.getSystemService(DisplayManager.class);
+        if (manager == null) {
+            callback.onError("Android no entregó el administrador de pantallas");
+            return;
+        }
+
+        int safeWidth = Math.max(320, width);
+        int safeHeight = Math.max(480, height);
+        int safeDensity = Math.max(160, densityDpi);
+
+        /*
+         * PUBLIC permite que ChatGPT, que tiene otro UID, abra ventanas en el
+         * display. OWN_CONTENT_ONLY evita la duplicación de la pantalla principal
+         * y, a diferencia de los flags TRUSTED/SUPPORTS_TOUCH, no requiere un
+         * permiso reservado del sistema.
+         */
+        int[] attempts = new int[]{
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
+                        | DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY
+                        | DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
+                        | DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY
+                        | DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY,
+                0
+        };
+
+        Throwable lastError = null;
+        for (int flags : attempts) {
+            try {
+                VirtualDisplay display = createDisplay(
+                        manager,
+                        "Globo GPT " + bubbleId,
+                        safeWidth,
+                        safeHeight,
+                        safeDensity,
+                        surface,
+                        flags
+                );
+                if (display == null || display.getDisplay() == null) continue;
+
+                DISPLAYS.put(bubbleId, display);
+                callback.onReady(display.getDisplay().getDisplayId(), true);
+                return;
+            } catch (Throwable error) {
+                lastError = error;
+            }
+        }
+
+        String detail = lastError == null
+                ? "Android devolvió una pantalla nula"
+                : lastError.getClass().getSimpleName();
+        AppPreferences.recordMessage(
+                context,
+                "No se pudo crear el display público: " + detail
+        );
+        callback.onError("One UI rechazó todos los modos de pantalla virtual");
     }
 
     static void detach(Context context, String bubbleId) {
-        int displayId = getDisplayId(context, bubbleId);
-        if (displayId >= 0) ShizukuDisplayBridge.detachDisplay(displayId);
+        VirtualDisplay display = DISPLAYS.get(bubbleId);
+        if (display == null) return;
+        try {
+            display.setSurface(null);
+        } catch (RuntimeException ignored) {
+        }
     }
 
     static void release(Context context, String bubbleId) {
-        int displayId = getDisplayId(context, bubbleId);
-        if (displayId >= 0) ShizukuDisplayBridge.releaseDisplay(displayId);
-        forget(context, bubbleId);
+        VirtualDisplay display = DISPLAYS.remove(bubbleId);
+        if (display == null) return;
+        try {
+            display.release();
+        } catch (RuntimeException ignored) {
+        }
     }
 
     static void releaseAll(Context context) {
-        SharedPreferences preferences = prefs(context);
-        Set<String> ids = new HashSet<>(preferences.getStringSet(KEY_IDS, java.util.Collections.emptySet()));
-        for (String bubbleId : ids) {
-            int displayId = preferences.getInt(PREFIX + bubbleId, -1);
-            if (displayId >= 0) ShizukuDisplayBridge.releaseDisplay(displayId);
+        for (VirtualDisplay display : DISPLAYS.values()) {
+            try {
+                display.release();
+            } catch (RuntimeException ignored) {
+            }
         }
-        SharedPreferences.Editor editor = preferences.edit();
-        for (String bubbleId : ids) editor.remove(PREFIX + bubbleId);
-        editor.remove(KEY_IDS).apply();
+        DISPLAYS.clear();
     }
 
-    private static void create(
-            Context context,
-            String bubbleId,
+    private static VirtualDisplay createDisplay(
+            DisplayManager manager,
+            String name,
             int width,
             int height,
-            int densityDpi,
+            int density,
             Surface surface,
-            Callback callback
+            int flags
     ) {
-        ShizukuDisplayBridge.createDisplay(
-                "Globo GPT " + bubbleId,
-                width,
-                height,
-                densityDpi,
-                surface,
-                displayId -> {
-                    if (displayId < 0) {
-                        callback.onError("One UI rechazó la pantalla virtual");
-                        return;
-                    }
-                    remember(context, bubbleId, displayId);
-                    callback.onReady(displayId, true);
-                }
-        );
-    }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            VirtualDisplayConfig.Builder builder = new VirtualDisplayConfig.Builder(
+                    name,
+                    width,
+                    height,
+                    density
+            )
+                    .setFlags(flags)
+                    .setSurface(surface);
 
-    private static int getDisplayId(Context context, String bubbleId) {
-        return prefs(context).getInt(PREFIX + bubbleId, -1);
-    }
-
-    private static void remember(Context context, String bubbleId, int displayId) {
-        SharedPreferences preferences = prefs(context);
-        Set<String> ids = new HashSet<>(preferences.getStringSet(KEY_IDS, java.util.Collections.emptySet()));
-        ids.add(bubbleId);
-        preferences.edit()
-                .putStringSet(KEY_IDS, ids)
-                .putInt(PREFIX + bubbleId, displayId)
-                .apply();
-    }
-
-    private static void forget(Context context, String bubbleId) {
-        SharedPreferences preferences = prefs(context);
-        Set<String> ids = new HashSet<>(preferences.getStringSet(KEY_IDS, java.util.Collections.emptySet()));
-        ids.remove(bubbleId);
-        preferences.edit()
-                .putStringSet(KEY_IDS, ids)
-                .remove(PREFIX + bubbleId)
-                .apply();
-    }
-
-    private static SharedPreferences prefs(Context context) {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            Display physical = manager.getDisplay(Display.DEFAULT_DISPLAY);
+            if (physical != null && physical.getRefreshRate() > 0f) {
+                builder.setRequestedRefreshRate(physical.getRefreshRate());
+            }
+            return manager.createVirtualDisplay(builder.build());
+        }
+        return manager.createVirtualDisplay(name, width, height, density, surface, flags);
     }
 }
