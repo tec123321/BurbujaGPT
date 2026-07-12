@@ -6,6 +6,7 @@ import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.os.IBinder;
 import android.os.RemoteException;
+import android.view.Surface;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -25,6 +26,10 @@ final class ShizukuDisplayBridge {
 
     interface ResultCallback {
         void onResult(int result);
+    }
+
+    interface DisplayCallback {
+        void onDisplayCreated(int displayId);
     }
 
     private static final Object LOCK = new Object();
@@ -138,6 +143,86 @@ final class ShizukuDisplayBridge {
         }
     }
 
+    static void createDisplay(
+            String name,
+            int width,
+            int height,
+            int densityDpi,
+            Surface surface,
+            DisplayCallback callback
+    ) {
+        COMMANDS.execute(() -> {
+            int displayId = -1;
+            IDisplayBridge current = service;
+            if (current != null) {
+                try {
+                    displayId = current.createDisplay(
+                            name,
+                            width,
+                            height,
+                            densityDpi,
+                            surface
+                    );
+                } catch (RemoteException | RuntimeException ignored) {
+                    service = null;
+                }
+            }
+            if (callback != null) callback.onDisplayCreated(displayId);
+        });
+    }
+
+    static void updateDisplay(
+            int displayId,
+            int width,
+            int height,
+            int densityDpi,
+            Surface surface,
+            ResultCallback callback
+    ) {
+        COMMANDS.execute(() -> {
+            int result = 1;
+            IDisplayBridge current = service;
+            if (current != null) {
+                try {
+                    result = current.updateDisplay(
+                            displayId,
+                            width,
+                            height,
+                            densityDpi,
+                            surface
+                    ) ? 0 : 1;
+                } catch (RemoteException | RuntimeException ignored) {
+                    service = null;
+                }
+            }
+            if (callback != null) callback.onResult(result);
+        });
+    }
+
+    static void detachDisplay(int displayId) {
+        COMMANDS.execute(() -> {
+            IDisplayBridge current = service;
+            if (current == null) return;
+            try {
+                current.detachDisplay(displayId);
+            } catch (RemoteException | RuntimeException ignored) {
+                service = null;
+            }
+        });
+    }
+
+    static void releaseDisplay(int displayId) {
+        COMMANDS.execute(() -> {
+            IDisplayBridge current = service;
+            if (current == null) return;
+            try {
+                current.releaseDisplay(displayId);
+            } catch (RemoteException | RuntimeException ignored) {
+                service = null;
+            }
+        });
+    }
+
     static void launch(
             String component,
             int userId,
@@ -198,10 +283,20 @@ final class ShizukuDisplayBridge {
                 current.inputText(displayId, text);
                 if (pressEnter) {
                     long now = android.os.SystemClock.uptimeMillis();
-                    current.injectKey(displayId, android.view.KeyEvent.KEYCODE_ENTER,
-                            android.view.KeyEvent.ACTION_DOWN, now, now);
-                    current.injectKey(displayId, android.view.KeyEvent.KEYCODE_ENTER,
-                            android.view.KeyEvent.ACTION_UP, now, now + 20);
+                    current.injectKey(
+                            displayId,
+                            android.view.KeyEvent.KEYCODE_ENTER,
+                            android.view.KeyEvent.ACTION_DOWN,
+                            now,
+                            now
+                    );
+                    current.injectKey(
+                            displayId,
+                            android.view.KeyEvent.KEYCODE_ENTER,
+                            android.view.KeyEvent.ACTION_UP,
+                            now,
+                            now + 20
+                    );
                 }
             } catch (RemoteException | RuntimeException ignored) {
                 service = null;
