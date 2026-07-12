@@ -23,8 +23,6 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 COMPACT_SCALE_METHOD = '''    private void applyPanelScale() {
         if (expandedPanel == null || stopwatchRow == null || timeView == null || resetView == null) return;
 
-        // La escala modifica el tamaño visual, pero el alto sigue al contenido real.
-        // Así, una letra pequeña no deja filas negras vacías aunque la interfaz esté al 160 %.
         expandedPanel.setPadding(dp(5), dp(3), dp(3), dp(3));
         stopwatchRow.setPadding(dp(1), 0, 0, 0);
         stopwatchRow.setMinimumHeight(0);
@@ -102,8 +100,8 @@ def patch_service() -> None:
         "            dividerParams.bottomMargin = dp(2);\n",
     )
 
-    # El borde se considera activo si está ejecutándose el cronómetro principal
-    # o cualquiera de los temporizadores independientes.
+    # El borde verde depende EXCLUSIVAMENTE de los temporizadores de cuenta regresiva.
+    # El cronómetro principal no cambia el borde: permanece blanco.
     old_update = '''        edgeTouchView.setIndicatorState(
                 running,
                 AppPrefs.intervalMarksEnabled(this),
@@ -113,7 +111,7 @@ def patch_service() -> None:
                 AppPrefs.getIntervalMarkHeight(this));
 '''
     new_update = '''        edgeTouchView.setIndicatorState(
-                hasRunningClock(),
+                activeTimerCount() > 0,
                 AppPrefs.intervalMarksEnabled(this),
                 completedSquares,
                 currentSquareProgress,
@@ -121,9 +119,8 @@ def patch_service() -> None:
                 AppPrefs.getIntervalMarkHeight(this));
         edgeTouchView.invalidate();
 '''
-    text = replace_once(text, old_update, new_update, "estado activo de cronómetro y temporizadores")
+    text = replace_once(text, old_update, new_update, "estado exclusivo de temporizadores")
 
-    # Color activo claramente verde oscuro en relleno y borde; pausado conserva borde blanco.
     old_colors = '''            if (stopwatchRunning) {
                 linePaint.setColor(Color.rgb(20, 64, 49));
                 strokePaint.setColor(Color.rgb(29, 104, 78));
@@ -140,7 +137,7 @@ def patch_service() -> None:
                 strokePaint.setColor(Color.WHITE);
             }
 '''
-    text = replace_once(text, old_colors, new_colors, "color verde del borde activo")
+    text = replace_once(text, old_colors, new_colors, "color verde del temporizador activo")
 
     SERVICE.write_text(text, encoding="utf-8")
 
