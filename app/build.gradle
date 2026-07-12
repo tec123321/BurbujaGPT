@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.burbujagpt'
         minSdk 24
         targetSdk 35
-        versionCode 16
-        versionName '1.3.3-adaptada-multichat-stable'
+        versionCode 17
+        versionName '1.3.4-adaptada-multichat-anti-collapse'
     }
 
     compileOptions {
