@@ -1,5 +1,6 @@
 package com.leonardo.burbujagpt;
 
+import android.app.ActivityOptions;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.service.notification.NotificationListenerService;
@@ -46,13 +47,17 @@ public final class ChatGptNotificationListenerService extends NotificationListen
         try {
             NativeBubblePublisher.publishFromNotification(this, sbn, autoExpand);
         } catch (RuntimeException | LinkageError error) {
-            AppPreferences.recordError(this, "No se pudo convertir la notificación de ChatGPT en burbuja", error);
+            AppPreferences.recordError(
+                    this,
+                    "No se pudo convertir la notificación de ChatGPT en burbuja",
+                    error
+            );
         }
     }
 
-    static boolean openSourceNotification(String key) {
+    static boolean openSourceNotificationOnDisplay(String key, int displayId) {
         ChatGptNotificationListenerService service = activeInstance;
-        if (service == null || key == null || key.isEmpty()) return false;
+        if (service == null || key == null || key.isEmpty() || displayId < 0) return false;
 
         StatusBarNotification[] active = service.getActiveNotifications();
         if (active == null) return false;
@@ -61,10 +66,24 @@ public final class ChatGptNotificationListenerService extends NotificationListen
             PendingIntent contentIntent = item.getNotification().contentIntent;
             if (contentIntent == null) return false;
             try {
-                contentIntent.send();
+                ActivityOptions options = ActivityOptions.makeBasic();
+                options.setLaunchDisplayId(displayId);
+                contentIntent.send(
+                        service,
+                        0,
+                        null,
+                        null,
+                        null,
+                        null,
+                        options.toBundle()
+                );
                 return true;
             } catch (PendingIntent.CanceledException | RuntimeException error) {
-                AppPreferences.recordError(service, "No se pudo abrir la conversación de la notificación", error);
+                AppPreferences.recordError(
+                        service,
+                        "No se pudo abrir la conversación de la notificación en el globo",
+                        error
+                );
                 return false;
             }
         }
