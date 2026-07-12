@@ -40,7 +40,14 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Build unsigned release APK
-        run: gradle :stopwatch:assembleRelease --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          if ! gradle :stopwatch:assembleRelease --stacktrace > build.log 2>&1; then
+            tail -n 180 build.log
+            exit 1
+          fi
+          tail -n 40 build.log
 
       - name: Collect APK and signing tools
         shell: bash
