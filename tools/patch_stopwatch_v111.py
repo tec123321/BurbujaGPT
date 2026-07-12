@@ -102,7 +102,8 @@ def patch_service() -> None:
         "            dividerParams.bottomMargin = dp(2);\n",
     )
 
-    # Fuerza la actualización visual de la barra lateral al cambiar el estado.
+    # El borde se considera activo si está ejecutándose el cronómetro principal
+    # o cualquiera de los temporizadores independientes.
     old_update = '''        edgeTouchView.setIndicatorState(
                 running,
                 AppPrefs.intervalMarksEnabled(this),
@@ -111,8 +112,16 @@ def patch_service() -> None:
                 AppPrefs.getIntervalMarkWidth(this),
                 AppPrefs.getIntervalMarkHeight(this));
 '''
-    new_update = old_update + "        edgeTouchView.invalidate();\n"
-    text = replace_once(text, old_update, new_update, "actualización del indicador lateral")
+    new_update = '''        edgeTouchView.setIndicatorState(
+                hasRunningClock(),
+                AppPrefs.intervalMarksEnabled(this),
+                completedSquares,
+                currentSquareProgress,
+                AppPrefs.getIntervalMarkWidth(this),
+                AppPrefs.getIntervalMarkHeight(this));
+        edgeTouchView.invalidate();
+'''
+    text = replace_once(text, old_update, new_update, "estado activo de cronómetro y temporizadores")
 
     # Color activo claramente verde oscuro en relleno y borde; pausado conserva borde blanco.
     old_colors = '''            if (stopwatchRunning) {
