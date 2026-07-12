@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.burbujagpt'
         minSdk 24
         targetSdk 35
-        versionCode 13
-        versionName '1.3-native-app-bubble'
+        versionCode 14
+        versionName '1.3.1-adaptada-notificaciones'
     }
 
     compileOptions {
