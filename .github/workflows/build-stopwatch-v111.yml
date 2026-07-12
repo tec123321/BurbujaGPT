@@ -1,4 +1,4 @@
-name: Build Cronometro Lateral v1.14
+name: Build Cronometro Lateral v1.15
 
 on:
   push:
@@ -51,15 +51,15 @@ jobs:
           cp "$BUILD_TOOLS/lib/apksigner.jar" signing-tools/apksigner.jar
           cp "$BUILD_TOOLS/zipalign" signing-tools/zipalign
           chmod +x signing-tools/zipalign
-          cp stopwatch/build/outputs/apk/release/stopwatch-release-unsigned.apk Cronometro-Lateral-v1.14-unsigned.apk
+          cp stopwatch/build/outputs/apk/release/stopwatch-release-unsigned.apk Cronometro-Lateral-v1.15-unsigned.apk
 
       - name: Upload unsigned APK and signing tools
         id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: Cronometro-Lateral-v1.14-unsigned-and-tools
+          name: Cronometro-Lateral-v1.15-unsigned-and-tools
           path: |
-            Cronometro-Lateral-v1.14-unsigned.apk
+            Cronometro-Lateral-v1.15-unsigned.apk
             signing-tools/apksigner.jar
             signing-tools/zipalign
 
