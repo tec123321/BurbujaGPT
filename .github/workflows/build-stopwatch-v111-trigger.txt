@@ -1,1 +1,1 @@
-Trigger Cronometro Lateral v1.12 build: green edge for any running timer.
+Trigger Cronometro Lateral v1.13 build: edge remains white for stopwatch and turns green only for running countdown timers.
