@@ -1,10 +1,19 @@
 package com.leonardo.burbujagpt;
 
+import android.content.Context;
+import android.hardware.display.DisplayManager;
+import android.hardware.display.VirtualDisplay;
+import android.hardware.display.VirtualDisplayConfig;
+import android.os.Build;
 import android.os.SystemClock;
+import android.view.Display;
 import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.Surface;
+
+import androidx.annotation.Keep;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
@@ -14,22 +23,149 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Servicio de usuario Shizuku. Se ejecuta con identidad shell para iniciar
- * ChatGPT en la pantalla virtual e inyectar eventos en ese display.
+ * Servicio de usuario Shizuku. Se ejecuta con identidad shell, crea una pantalla
+ * virtual confiable y controla la aplicación oficial dentro de ese display.
  */
 public final class PrivilegedDisplayService extends IDisplayBridge.Stub {
+    private static final int FLAG_PRESENTATION = 1 << 1;
+    private static final int FLAG_OWN_CONTENT_ONLY = 1 << 3;
+    private static final int FLAG_SUPPORTS_TOUCH = 1 << 6;
+    private static final int FLAG_DESTROY_CONTENT_ON_REMOVAL = 1 << 8;
+    private static final int FLAG_TRUSTED = 1 << 10;
+    private static final int FLAG_OWN_DISPLAY_GROUP = 1 << 11;
+    private static final int FLAG_ALWAYS_UNLOCKED = 1 << 12;
+    private static final int FLAG_OWN_FOCUS = 1 << 14;
+    private static final int FLAG_DEVICE_DISPLAY_GROUP = 1 << 15;
+
+    private final Map<Integer, VirtualDisplay> displays = new ConcurrentHashMap<>();
     private final Map<Integer, GestureState> fallbackGestures = new ConcurrentHashMap<>();
+    private volatile DisplayManager displayManager;
     private volatile Object inputManager;
     private volatile Method injectInputEvent;
     private volatile Method setDisplayId;
 
+    /** Constructor de respaldo para versiones antiguas de Shizuku. */
     public PrivilegedDisplayService() {
+        prepareInputInjection();
+    }
+
+    /** Shizuku API 13 entrega un Context del paquete dentro del proceso shell. */
+    @Keep
+    public PrivilegedDisplayService(Context context) {
+        displayManager = context.getSystemService(DisplayManager.class);
         prepareInputInjection();
     }
 
     @Override
     public void destroy() {
+        for (VirtualDisplay display : displays.values()) {
+            try {
+                display.release();
+            } catch (RuntimeException ignored) {
+            }
+        }
+        displays.clear();
         System.exit(0);
+    }
+
+    @Override
+    public int createDisplay(
+            String name,
+            int width,
+            int height,
+            int densityDpi,
+            Surface surface
+    ) {
+        DisplayManager manager = displayManager;
+        if (manager == null || surface == null || !surface.isValid()) return -1;
+
+        int safeWidth = Math.max(320, width);
+        int safeHeight = Math.max(480, height);
+        int safeDensity = Math.max(160, densityDpi);
+        int[] flagAttempts = new int[]{
+                FLAG_PRESENTATION
+                        | FLAG_OWN_CONTENT_ONLY
+                        | FLAG_SUPPORTS_TOUCH
+                        | FLAG_DESTROY_CONTENT_ON_REMOVAL
+                        | FLAG_TRUSTED
+                        | FLAG_OWN_DISPLAY_GROUP
+                        | FLAG_ALWAYS_UNLOCKED
+                        | FLAG_OWN_FOCUS
+                        | FLAG_DEVICE_DISPLAY_GROUP,
+                FLAG_PRESENTATION
+                        | FLAG_OWN_CONTENT_ONLY
+                        | FLAG_SUPPORTS_TOUCH
+                        | FLAG_DESTROY_CONTENT_ON_REMOVAL
+                        | FLAG_TRUSTED
+                        | FLAG_OWN_DISPLAY_GROUP
+                        | FLAG_ALWAYS_UNLOCKED
+                        | FLAG_OWN_FOCUS,
+                FLAG_PRESENTATION
+                        | FLAG_OWN_CONTENT_ONLY
+                        | FLAG_SUPPORTS_TOUCH
+                        | FLAG_DESTROY_CONTENT_ON_REMOVAL
+                        | FLAG_TRUSTED,
+                FLAG_PRESENTATION
+                        | FLAG_OWN_CONTENT_ONLY
+                        | FLAG_SUPPORTS_TOUCH
+        };
+
+        for (int flags : flagAttempts) {
+            VirtualDisplay display = createVirtualDisplay(
+                    manager,
+                    name == null ? "Globo GPT" : name,
+                    safeWidth,
+                    safeHeight,
+                    safeDensity,
+                    surface,
+                    flags
+            );
+            if (display == null || display.getDisplay() == null) continue;
+            int displayId = display.getDisplay().getDisplayId();
+            displays.put(displayId, display);
+            return displayId;
+        }
+        return -1;
+    }
+
+    @Override
+    public boolean updateDisplay(
+            int displayId,
+            int width,
+            int height,
+            int densityDpi,
+            Surface surface
+    ) {
+        VirtualDisplay display = displays.get(displayId);
+        if (display == null || surface == null || !surface.isValid()) return false;
+        try {
+            display.resize(Math.max(320, width), Math.max(480, height), Math.max(160, densityDpi));
+            display.setSurface(surface);
+            return true;
+        } catch (RuntimeException error) {
+            return false;
+        }
+    }
+
+    @Override
+    public void detachDisplay(int displayId) {
+        VirtualDisplay display = displays.get(displayId);
+        if (display == null) return;
+        try {
+            display.setSurface(null);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    @Override
+    public void releaseDisplay(int displayId) {
+        VirtualDisplay display = displays.remove(displayId);
+        if (display == null) return;
+        try {
+            display.release();
+        } catch (RuntimeException ignored) {
+        }
+        fallbackGestures.remove(displayId);
     }
 
     @Override
@@ -42,14 +178,15 @@ public final class PrivilegedDisplayService extends IDisplayBridge.Stub {
         if (component == null || component.trim().isEmpty() || displayId < 0) return 64;
 
         String user = String.valueOf(Math.max(0, userId));
-        String display = String.valueOf(displayId);
+        String targetDisplay = String.valueOf(displayId);
         String[] taskFlags = multipleTask
                 ? new String[]{"--activity-new-task", "--activity-new-document", "--activity-multiple-task"}
                 : new String[]{"--activity-new-task", "--activity-reorder-to-front"};
 
         String[][] prefixes = new String[][]{
-                {"/system/bin/am", "start", "--user", user, "--display", display},
-                {"/system/bin/cmd", "activity", "start-activity", "--user", user, "--display", display}
+                {"/system/bin/am", "start", "--user", user, "--display", targetDisplay},
+                {"/system/bin/cmd", "activity", "start-activity", "--user", user,
+                        "--display", targetDisplay}
         };
 
         int last = 1;
@@ -59,12 +196,11 @@ public final class PrivilegedDisplayService extends IDisplayBridge.Stub {
             if (last == 0) return 0;
         }
 
-        // Algunos firmwares Samsung rechazan MULTIPLE_TASK pero aceptan un arranque simple.
         String[][] simpleAttempts = new String[][]{
-                {"/system/bin/am", "start", "--user", user, "--display", display,
+                {"/system/bin/am", "start", "--user", user, "--display", targetDisplay,
                         "--activity-new-task", "-n", component},
                 {"/system/bin/cmd", "activity", "start-activity", "--user", user,
-                        "--display", display, "--activity-new-task", "-n", component}
+                        "--display", targetDisplay, "--activity-new-task", "-n", component}
         };
         for (String[] command : simpleAttempts) {
             last = run(command, 10);
@@ -98,7 +234,6 @@ public final class PrivilegedDisplayService extends IDisplayBridge.Stub {
         } finally {
             event.recycle();
         }
-
         return fallbackTouch(displayId, action, x, y, safeDown, safeEvent);
     }
 
@@ -154,6 +289,37 @@ public final class PrivilegedDisplayService extends IDisplayBridge.Stub {
                 "/system/bin/input", "-d", String.valueOf(displayId),
                 "keyevent", String.valueOf(KeyEvent.KEYCODE_BACK)
         }, 4);
+    }
+
+    private VirtualDisplay createVirtualDisplay(
+            DisplayManager manager,
+            String name,
+            int width,
+            int height,
+            int density,
+            Surface surface,
+            int flags
+    ) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                VirtualDisplayConfig.Builder builder = new VirtualDisplayConfig.Builder(
+                        name,
+                        width,
+                        height,
+                        density
+                )
+                        .setFlags(flags)
+                        .setSurface(surface);
+                Display physical = manager.getDisplay(Display.DEFAULT_DISPLAY);
+                if (physical != null && physical.getRefreshRate() > 0f) {
+                    builder.setRequestedRefreshRate(physical.getRefreshRate());
+                }
+                return manager.createVirtualDisplay(builder.build());
+            }
+            return manager.createVirtualDisplay(name, width, height, density, surface, flags);
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     private void prepareInputInjection() {
