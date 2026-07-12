@@ -22,7 +22,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** Configura una conversación Android que aloja la actividad oficial de ChatGPT. */
+/** Configura varias conversaciones Android que alojan ChatGPT oficial. */
 public class MainActivity extends Activity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 1300;
     private static final int BACKGROUND = 0xFF050505;
@@ -35,7 +35,9 @@ public class MainActivity extends Activity {
     private TextView statusView;
     private TextView diagnosticView;
     private Button activateButton;
+    private Button newChatButton;
     private Button messageAccessButton;
+    private boolean pendingCreateNewChat;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -81,7 +83,7 @@ public class MainActivity extends Activity {
         titleParams.setMargins(0, dp(14), 0, 0);
         root.addView(title, titleParams);
 
-        TextView subtitle = text("ChatGPT oficial en una burbuja nativa", 15, MUTED, false);
+        TextView subtitle = text("Varios chats de ChatGPT en burbujas nativas", 15, MUTED, false);
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = matchWrap();
         subtitleParams.setMargins(0, dp(6), 0, dp(18));
@@ -89,13 +91,13 @@ public class MainActivity extends Activity {
 
         LinearLayout explanation = card();
         explanation.addView(text(
-                "Usa la aplicación oficial instalada. Cuando ChatGPT publica una respuesta, Globo GPT vuelve a mostrar la misma burbuja.",
+                "Mantiene el funcionamiento de V13 Adaptada. El primer botón recupera el último chat y el segundo crea otra burbuja independiente.",
                 14,
                 TEXT,
                 false
         ), matchWrap());
         TextView session = text(
-                "La sesión, Plus, historial, voz y actualizaciones siguen perteneciendo a ChatGPT oficial. El icono grande de la burbuja se obtiene de esa aplicación.",
+                "Sigue usando ChatGPT oficial: conserva sesión, Plus, historial, voz y actualizaciones. Cuando llega una respuesta, reaparece el último chat utilizado.",
                 12,
                 MUTED,
                 false
@@ -108,8 +110,19 @@ public class MainActivity extends Activity {
         statusView = text("", 14, TEXT, true);
         root.addView(statusView, cardParams());
 
-        activateButton = button("Activar burbuja nativa", true, view -> beginActivation());
+        activateButton = button(
+                "Abrir o recuperar último chat",
+                true,
+                view -> beginActivation(false)
+        );
         root.addView(activateButton, buttonParams());
+
+        newChatButton = button(
+                "Crear otro chat",
+                false,
+                view -> beginActivation(true)
+        );
+        root.addView(newChatButton, buttonParams());
 
         messageAccessButton = button(
                 "Permitir aparición al recibir mensajes",
@@ -123,10 +136,11 @@ public class MainActivity extends Activity {
                 false,
                 view -> openBubbleSettings()
         ), buttonParams());
+
         root.addView(button(
-                "Desactivar burbuja",
+                "Eliminar todos los chats",
                 false,
-                view -> deactivateBubble()
+                view -> deactivateAllBubbles()
         ), buttonParams());
 
         diagnosticView = text("", 12, 0xFFFCA5A5, false);
@@ -134,7 +148,7 @@ public class MainActivity extends Activity {
         root.addView(diagnosticView, cardParams());
 
         TextView help = text(
-                "Activa una vez el acceso a notificaciones. Después, una respuesta nueva de ChatGPT vuelve a publicar y expandir la misma burbuja.",
+                "Para abrir varios chats, pulsa Crear otro chat cada vez. Android mostrará Chat 1, Chat 2, Chat 3, etc.",
                 12,
                 MUTED,
                 false
@@ -144,7 +158,9 @@ public class MainActivity extends Activity {
         return scroll;
     }
 
-    private void beginActivation() {
+    private void beginActivation(boolean createNewChat) {
+        pendingCreateNewChat = createNewChat;
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             Toast.makeText(this, "Se requiere Android 11 o posterior", Toast.LENGTH_LONG).show();
             return;
@@ -163,74 +179,101 @@ public class MainActivity extends Activity {
             );
             return;
         }
-        publishBubble();
-    }
 
-    private void publishBubble() {
-        try {
-            AppPreferences.clearLastError(this);
-            NativeBubblePublisher.publish(this, true);
-            Toast.makeText(this, "Burbuja de ChatGPT publicada", Toast.LENGTH_SHORT).show();
-            getWindow().getDecorView().postDelayed(this::updateStatus, 450);
-            getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 900);
-        } catch (RuntimeException | LinkageError error) {
-            AppPreferences.recordError(this, "No se pudo publicar la burbuja", error);
-            Toast.makeText(this, "Android rechazó la burbuja", Toast.LENGTH_LONG).show();
-            updateStatus();
+        if (createNewChat) {
+            publishNewBubble();
+        } else {
+            publishLastBubble();
         }
     }
 
-    private void deactivateBubble() {
+    private void publishLastBubble() {
+        try {
+            AppPreferences.clearLastError(this);
+            NativeBubblePublisher.publish(this, true);
+            Toast.makeText(this, "Último chat publicado", Toast.LENGTH_SHORT).show();
+            afterPublish();
+        } catch (RuntimeException | LinkageError error) {
+            handlePublishError(error);
+        }
+    }
+
+    private void publishNewBubble() {
+        try {
+            AppPreferences.clearLastError(this);
+            int sequence = NativeBubblePublisher.publishNewChat(this, true);
+            Toast.makeText(this, "Chat " + sequence + " creado", Toast.LENGTH_SHORT).show();
+            afterPublish();
+        } catch (RuntimeException | LinkageError error) {
+            handlePublishError(error);
+        }
+    }
+
+    private void afterPublish() {
+        getWindow().getDecorView().postDelayed(this::updateStatus, 450);
+        getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 900);
+    }
+
+    private void handlePublishError(Throwable error) {
+        AppPreferences.recordError(this, "No se pudo publicar la burbuja", error);
+        Toast.makeText(this, "Android rechazó la burbuja", Toast.LENGTH_LONG).show();
+        updateStatus();
+    }
+
+    private void deactivateAllBubbles() {
         NativeBubblePublisher.cancel(this);
-        Toast.makeText(this, "Burbuja desactivada", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Todos los chats fueron eliminados", Toast.LENGTH_SHORT).show();
         getWindow().getDecorView().postDelayed(this::updateStatus, 180);
     }
 
     private void updateStatus() {
-        if (statusView == null || activateButton == null || messageAccessButton == null) return;
+        if (statusView == null
+                || activateButton == null
+                || newChatButton == null
+                || messageAccessButton == null) {
+            return;
+        }
 
         boolean listenerEnabled = isNotificationListenerEnabled();
+        int activeChats = NativeBubblePublisher.getActiveChatCount(this);
+
         messageAccessButton.setText(listenerEnabled
                 ? "Aparición al recibir mensajes: activada"
                 : "Permitir aparición al recibir mensajes");
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
-            statusView.setText("Estado: Android no admite esta burbuja nativa");
+            statusView.setText("Estado: Android no admite estas burbujas nativas");
             statusView.setTextColor(0xFFFCA5A5);
             activateButton.setEnabled(false);
+            newChatButton.setEnabled(false);
         } else if (!isOfficialAppInstalled()) {
             statusView.setText("Estado: falta instalar ChatGPT oficial");
             statusView.setTextColor(0xFFFCA5A5);
             activateButton.setText("Instalar ChatGPT oficial");
             activateButton.setEnabled(true);
+            newChatButton.setEnabled(false);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
             statusView.setText("Estado: falta permitir notificaciones");
             statusView.setTextColor(0xFFFBBF24);
-            activateButton.setText("Permitir y activar");
+            activateButton.setText("Permitir y abrir primer chat");
             activateButton.setEnabled(true);
-        } else if (NativeBubblePublisher.isExpandedAsBubble(this)) {
-            statusView.setText(listenerEnabled
-                    ? "Estado: burbuja activa · aparición por mensajes activa"
-                    : "Estado: burbuja activa · falta acceso a mensajes");
-            statusView.setTextColor(listenerEnabled ? 0xFF34D399 : 0xFFFBBF24);
-            activateButton.setText("Volver a publicar burbuja");
-            activateButton.setEnabled(true);
-        } else if (NativeBubblePublisher.isPosted(this)) {
-            statusView.setText(listenerEnabled
-                    ? "Estado: conversación publicada · aparición por mensajes activa"
-                    : "Estado: conversación publicada · falta acceso a mensajes");
-            statusView.setTextColor(0xFFFBBF24);
-            activateButton.setText("Volver a publicar burbuja");
-            activateButton.setEnabled(true);
+            newChatButton.setEnabled(true);
         } else {
-            statusView.setText(listenerEnabled
-                    ? "Estado: listo · aparición por mensajes activa"
-                    : "Estado: listo · falta permitir aparición por mensajes");
-            statusView.setTextColor(listenerEnabled ? 0xFF34D399 : TEXT);
-            activateButton.setText("Activar burbuja nativa");
+            String chatLabel = activeChats == 1
+                    ? "1 chat publicado"
+                    : activeChats + " chats publicados";
+            String listenerLabel = listenerEnabled
+                    ? "aparición por mensajes activa"
+                    : "falta acceso a mensajes";
+            statusView.setText("Estado: " + chatLabel + " · " + listenerLabel);
+            statusView.setTextColor(listenerEnabled ? 0xFF34D399 : 0xFFFBBF24);
+            activateButton.setText(activeChats > 0
+                    ? "Abrir o recuperar último chat"
+                    : "Activar primer chat");
             activateButton.setEnabled(true);
+            newChatButton.setEnabled(true);
         }
 
         String diagnostic = AppPreferences.getLastError(this);
@@ -310,11 +353,15 @@ public class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, results);
         if (requestCode != NOTIFICATION_PERMISSION_REQUEST) return;
         if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
-            publishBubble();
+            if (pendingCreateNewChat) {
+                publishNewBubble();
+            } else {
+                publishLastBubble();
+            }
         } else {
             Toast.makeText(
                     this,
-                    "Sin notificaciones Android no puede crear la burbuja",
+                    "Sin notificaciones Android no puede crear las burbujas",
                     Toast.LENGTH_LONG
             ).show();
             updateStatus();
