@@ -20,6 +20,7 @@ def collapsedBorderPatch = rootProject.file('tools/patch_stopwatch_border.py')
 def compactUpdatePatch = rootProject.file('tools/patch_stopwatch_v110.py')
 def finalUpdatePatch = rootProject.file('tools/patch_stopwatch_v111.py')
 def configurableEdgePatch = rootProject.file('tools/patch_stopwatch_v114.py')
+def activeFillPatch = rootProject.file('tools/patch_stopwatch_v115.py')
 
 tasks.register('patchStopwatchSquareIndicator', Exec) {
     inputs.file(squareIndicatorPatch)
@@ -65,6 +66,15 @@ tasks.register('patchStopwatchConfigurableEdge', Exec) {
     commandLine 'python3', configurableEdgePatch.absolutePath
 }
 
-tasks.named('preBuild').configure {
+tasks.register('patchStopwatchActiveFill', Exec) {
     dependsOn tasks.named('patchStopwatchConfigurableEdge')
+    inputs.file(activeFillPatch)
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/StopwatchService.java'))
+    inputs.file(file('src/main/java/com/leonardo/edgestopwatch/MainActivity.java'))
+    outputs.upToDateWhen { false }
+    commandLine 'python3', activeFillPatch.absolutePath
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('patchStopwatchActiveFill')
 }
