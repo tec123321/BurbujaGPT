@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.edgestopwatch'
         minSdk 23
         targetSdk 33
-        versionCode 15
-        versionName '1.14-configurable-edge-progress'
+        versionCode 16
+        versionName '1.15-stopwatch-active-fill'
     }
 }
 
