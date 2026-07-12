@@ -1,1 +1,1 @@
-Retry Cronometro Lateral v1.15 build with concise Gradle diagnostics.
+Retry Cronometro Lateral v1.15 and upload Gradle diagnostics artifact.
