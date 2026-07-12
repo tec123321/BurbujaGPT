@@ -3,6 +3,7 @@ package com.leonardo.burbujagpt;
 import android.Manifest;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -34,6 +35,7 @@ public class MainActivity extends Activity {
     private TextView statusView;
     private TextView diagnosticView;
     private Button activateButton;
+    private Button messageAccessButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,19 +64,18 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        TextView orb = text("✦", 34, Color.WHITE, true);
+        TextView orb = text("◎", 36, Color.WHITE, true);
         orb.setGravity(Gravity.CENTER);
-        GradientDrawable orbBackground = new GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF7C3AED, 0xFF0EA5E9, 0xFF10B981}
-        );
+        GradientDrawable orbBackground = new GradientDrawable();
+        orbBackground.setColor(0xFF202020);
         orbBackground.setShape(GradientDrawable.OVAL);
+        orbBackground.setStroke(dp(1), 0xFF505050);
         orb.setBackground(orbBackground);
         LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(dp(76), dp(76));
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = text("Globo GPT V13", 28, TEXT, true);
+        TextView title = text("Globo GPT V13 Adaptada", 27, TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(14), 0, 0);
@@ -88,13 +89,13 @@ public class MainActivity extends Activity {
 
         LinearLayout explanation = card();
         explanation.addView(text(
-                "No usa WebView, Shizuku, superposición ni ventana emergente de Samsung. Publica una conversación de Android y abre la actividad de la aplicación oficial instalada dentro de la tarea de esa burbuja.",
+                "Usa la aplicación oficial instalada. Cuando ChatGPT publica una respuesta, Globo GPT vuelve a mostrar la misma burbuja.",
                 14,
                 TEXT,
                 false
         ), matchWrap());
         TextView session = text(
-                "La sesión, Plus, historial, voz y actualizaciones siguen perteneciendo a ChatGPT oficial porque su APK y su firma no se modifican.",
+                "La sesión, Plus, historial, voz y actualizaciones siguen perteneciendo a ChatGPT oficial. El icono grande de la burbuja se obtiene de esa aplicación.",
                 12,
                 MUTED,
                 false
@@ -109,6 +110,14 @@ public class MainActivity extends Activity {
 
         activateButton = button("Activar burbuja nativa", true, view -> beginActivation());
         root.addView(activateButton, buttonParams());
+
+        messageAccessButton = button(
+                "Permitir aparición al recibir mensajes",
+                false,
+                view -> openNotificationListenerSettings()
+        );
+        root.addView(messageAccessButton, buttonParams());
+
         root.addView(button(
                 "Permitir burbujas en Android",
                 false,
@@ -125,7 +134,7 @@ public class MainActivity extends Activity {
         root.addView(diagnosticView, cardParams());
 
         TextView help = text(
-                "Después de activarla, toca el icono de burbuja en la notificación si One UI no la expande automáticamente.",
+                "Activa una vez el acceso a notificaciones. Después, una respuesta nueva de ChatGPT vuelve a publicar y expandir la misma burbuja.",
                 12,
                 MUTED,
                 false
@@ -161,7 +170,7 @@ public class MainActivity extends Activity {
         try {
             AppPreferences.clearLastError(this);
             NativeBubblePublisher.publish(this, true);
-            Toast.makeText(this, "Conversación de burbuja publicada", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Burbuja de ChatGPT publicada", Toast.LENGTH_SHORT).show();
             getWindow().getDecorView().postDelayed(this::updateStatus, 450);
             getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 900);
         } catch (RuntimeException | LinkageError error) {
@@ -178,7 +187,12 @@ public class MainActivity extends Activity {
     }
 
     private void updateStatus() {
-        if (statusView == null || activateButton == null) return;
+        if (statusView == null || activateButton == null || messageAccessButton == null) return;
+
+        boolean listenerEnabled = isNotificationListenerEnabled();
+        messageAccessButton.setText(listenerEnabled
+                ? "Aparición al recibir mensajes: activada"
+                : "Permitir aparición al recibir mensajes");
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             statusView.setText("Estado: Android no admite esta burbuja nativa");
@@ -197,18 +211,24 @@ public class MainActivity extends Activity {
             activateButton.setText("Permitir y activar");
             activateButton.setEnabled(true);
         } else if (NativeBubblePublisher.isExpandedAsBubble(this)) {
-            statusView.setText("Estado: burbuja nativa activa");
-            statusView.setTextColor(0xFF34D399);
+            statusView.setText(listenerEnabled
+                    ? "Estado: burbuja activa · aparición por mensajes activa"
+                    : "Estado: burbuja activa · falta acceso a mensajes");
+            statusView.setTextColor(listenerEnabled ? 0xFF34D399 : 0xFFFBBF24);
             activateButton.setText("Volver a publicar burbuja");
             activateButton.setEnabled(true);
         } else if (NativeBubblePublisher.isPosted(this)) {
-            statusView.setText("Estado: conversación publicada · permite la burbuja en Android");
+            statusView.setText(listenerEnabled
+                    ? "Estado: conversación publicada · aparición por mensajes activa"
+                    : "Estado: conversación publicada · falta acceso a mensajes");
             statusView.setTextColor(0xFFFBBF24);
             activateButton.setText("Volver a publicar burbuja");
             activateButton.setEnabled(true);
         } else {
-            statusView.setText("Estado: listo");
-            statusView.setTextColor(TEXT);
+            statusView.setText(listenerEnabled
+                    ? "Estado: listo · aparición por mensajes activa"
+                    : "Estado: listo · falta permitir aparición por mensajes");
+            statusView.setTextColor(listenerEnabled ? 0xFF34D399 : TEXT);
             activateButton.setText("Activar burbuja nativa");
             activateButton.setEnabled(true);
         }
@@ -219,6 +239,29 @@ public class MainActivity extends Activity {
         } else {
             diagnosticView.setText("Diagnóstico:\n" + diagnostic);
             diagnosticView.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private boolean isNotificationListenerEnabled() {
+        String enabled = Settings.Secure.getString(
+                getContentResolver(),
+                "enabled_notification_listeners"
+        );
+        ComponentName component = new ComponentName(
+                this,
+                ChatGptNotificationListenerService.class
+        );
+        return enabled != null && enabled.contains(component.flattenToString());
+    }
+
+    private void openNotificationListenerSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+        } catch (ActivityNotFoundException error) {
+            startActivity(new Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + getPackageName())
+            ));
         }
     }
 
@@ -269,7 +312,11 @@ public class MainActivity extends Activity {
         if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
             publishBubble();
         } else {
-            Toast.makeText(this, "Sin notificaciones Android no puede crear la burbuja", Toast.LENGTH_LONG).show();
+            Toast.makeText(
+                    this,
+                    "Sin notificaciones Android no puede crear la burbuja",
+                    Toast.LENGTH_LONG
+            ).show();
             updateStatus();
         }
     }
