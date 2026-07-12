@@ -40,14 +40,29 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Build unsigned release APK
+        id: gradle_build
         shell: bash
         run: |
-          set -o pipefail
-          if ! gradle :stopwatch:assembleRelease --stacktrace > build.log 2>&1; then
-            tail -n 180 build.log
-            exit 1
-          fi
-          tail -n 40 build.log
+          set +e
+          gradle :stopwatch:assembleRelease --stacktrace > build.log 2>&1
+          status=$?
+          echo "$status" > build.exit
+          tail -n 120 build.log
+          exit 0
+
+      - name: Upload Gradle diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cronometro-Lateral-v1.15-build-log
+          path: |
+            build.log
+            build.exit
+
+      - name: Enforce build result
+        shell: bash
+        run: |
+          test "$(cat build.exit)" = "0"
 
       - name: Collect APK and signing tools
         shell: bash
