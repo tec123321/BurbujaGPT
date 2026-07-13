@@ -1,0 +1,96 @@
+name: Build Traductor Leo
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ traductor-leo-v1 ]
+    paths:
+      - 'traductor-leo/**'
+      - '.github/workflows/build-traductor-leo.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'traductor-leo/**'
+      - '.github/workflows/build-traductor-leo.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 35 packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK
+        id: build
+        shell: bash
+        run: |
+          set +e
+          gradle -p traductor-leo :app:assembleDebug --stacktrace > traductor-leo-build.log 2>&1
+          status=$?
+          echo "$status" > traductor-leo-build.exit
+          tail -n 160 traductor-leo-build.log
+          exit 0
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Traductor-Leo-v1-build-log
+          path: |
+            traductor-leo-build.log
+            traductor-leo-build.exit
+
+      - name: Enforce build result
+        shell: bash
+        run: test "$(cat traductor-leo-build.exit)" = "0"
+
+      - name: Prepare APK
+        shell: bash
+        run: |
+          mkdir -p artifact
+          cp traductor-leo/app/build/outputs/apk/debug/app-debug.apk artifact/Traductor-Leo-v1-debug.apk
+          sha256sum artifact/Traductor-Leo-v1-debug.apk | tee artifact/SHA256.txt
+
+      - name: Verify APK structure, manifest and Android signature
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            echo '=== APK SIGNATURE ==='
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs artifact/Traductor-Leo-v1-debug.apk
+            echo
+            echo '=== APK BADGING ==='
+            "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging artifact/Traductor-Leo-v1-debug.apk
+            echo
+            echo '=== ZIP INTEGRITY ==='
+            unzip -t artifact/Traductor-Leo-v1-debug.apk
+          } | tee artifact/VERIFICATION.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Traductor-Leo-v1-debug-apk
+          path: artifact/
