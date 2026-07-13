@@ -2,6 +2,8 @@ package com.leonardo.burbujagpt;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -15,63 +17,54 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
-import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/**
- * Lanzador ligero: mantiene la app oficial de ChatGPT instalada y usa una burbuja
- * propia para abrirla o traerla al frente solicitando vista libre/emergente.
- */
+import rikka.shizuku.Shizuku;
+
+/** Configuración de las burbujas con pantalla virtual de ChatGPT oficial. */
 public class MainActivity extends Activity {
-    private static final int NOTIFICATION_PERMISSION_REQUEST = 1101;
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 1500;
+    private static final int SHIZUKU_PERMISSION_REQUEST = 1502;
     private static final int BACKGROUND = 0xFF050505;
     private static final int CARD = 0xFF171717;
     private static final int BORDER = 0xFF343434;
     private static final int TEXT = 0xFFF5F5F5;
     private static final int MUTED = 0xFFA3A3A3;
-    private static final int PRIMARY = 0xFF2563EB;
+    private static final int PRIMARY = 0xFF10A37F;
 
-    private static volatile MainActivity visibleInstance;
+    private final Shizuku.OnRequestPermissionResultListener shizukuPermissionListener =
+            this::onShizukuPermissionResult;
 
     private TextView statusView;
-    private Button activateButton;
-    private boolean awaitingOverlayPermission;
+    private TextView diagnosticView;
+    private Button autoButton;
+    private Runnable pendingAfterNotificationPermission;
+    private Runnable pendingAfterShizukuPermission;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(Color.BLACK);
         getWindow().setNavigationBarColor(Color.BLACK);
-        AppPreferences.setMode(this, AppPreferences.MODE_OFFICIAL);
+        NativeBubblePublisher.cancelLegacy(this);
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener);
         setContentView(buildUi());
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        visibleInstance = this;
         updateStatus();
-
-        if (awaitingOverlayPermission && canDrawOverlays()) {
-            awaitingOverlayPermission = false;
-            requestNotificationOrActivate();
-        }
     }
 
     @Override
-    protected void onPause() {
-        if (visibleInstance == this) visibleInstance = null;
-        super.onPause();
-    }
-
-    static void sendVisibleTaskToBack() {
-        MainActivity activity = visibleInstance;
-        if (activity != null && !activity.isFinishing()) {
-            activity.runOnUiThread(() -> activity.moveTaskToBack(true));
-        }
+    protected void onDestroy() {
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener);
+        super.onDestroy();
     }
 
     private View buildUi() {
@@ -87,287 +80,384 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        TextView orb = makeText("✦", 34, Color.WHITE, true);
-        orb.setGravity(Gravity.CENTER);
-        GradientDrawable orbBackground = new GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF7C3AED, 0xFF0EA5E9, 0xFF10B981}
-        );
-        orbBackground.setShape(GradientDrawable.OVAL);
-        orb.setBackground(orbBackground);
-        LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(dp(76), dp(76));
-        orbParams.gravity = Gravity.CENTER_HORIZONTAL;
-        root.addView(orb, orbParams);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.ic_gpt_logo);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(78), dp(78));
+        logoParams.gravity = Gravity.CENTER_HORIZONTAL;
+        root.addView(logo, logoParams);
 
-        TextView title = makeText("Globo GPT V11", 28, TEXT, true);
+        TextView title = text("Globo GPT V15", 28, TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(14), 0, 0);
         root.addView(title, titleParams);
 
-        TextView subtitle = makeText(
-                "Burbuja para la aplicación oficial de ChatGPT",
-                15,
-                MUTED,
-                false
-        );
+        TextView subtitle = text("ChatGPT oficial dentro de una pantalla virtual", 15, MUTED, false);
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = matchWrap();
         subtitleParams.setMargins(0, dp(6), 0, dp(18));
         root.addView(subtitle, subtitleParams);
 
-        LinearLayout explanation = makeCard();
-        explanation.addView(makeText(
-                "Usa la aplicación oficial, por lo que conserva tu inicio con Google, Plus, historial, voz y funciones nativas. Al tocar el globo, intenta abrir o recuperar ChatGPT en la vista emergente de Samsung.",
+        LinearLayout explanation = card();
+        explanation.addView(text(
+                "No usa WebView ni la ventana múltiple de Samsung. Shizuku crea una pantalla virtual y ejecuta allí la aplicación oficial de ChatGPT; el globo muestra esa pantalla y reenvía los toques.",
                 14,
                 TEXT,
                 false
         ), matchWrap());
-        TextView limit = makeText(
-                "Samsung controla el modo de ventana. Si One UI rechaza la vista emergente, ChatGPT se abrirá normalmente; no se modifica ni se clona su APK.",
+        TextView note = text(
+                "Después de reiniciar el teléfono debes volver a iniciar Shizuku. El primer arranque puede tardar unos segundos.",
                 12,
                 MUTED,
                 false
         );
-        LinearLayout.LayoutParams limitParams = matchWrap();
-        limitParams.setMargins(0, dp(10), 0, 0);
-        explanation.addView(limit, limitParams);
+        LinearLayout.LayoutParams noteParams = matchWrap();
+        noteParams.setMargins(0, dp(10), 0, 0);
+        explanation.addView(note, noteParams);
         root.addView(explanation, cardParams());
 
-        statusView = makeText("", 14, TEXT, true);
+        statusView = text("", 14, TEXT, true);
         root.addView(statusView, cardParams());
 
-        activateButton = makeButton("Activar globo", true, v -> beginActivation());
-        root.addView(activateButton, buttonParams());
-        root.addView(makeButton(
-                "Probar ventana emergente ahora",
+        root.addView(button("Preparar Shizuku", true, view -> prepareShizuku(null)), buttonParams());
+        root.addView(button("Crear un globo de ChatGPT", false, view -> createManualBubble()), buttonParams());
+
+        autoButton = button("Activar globos automáticos", false, view -> toggleAutomaticBubbles());
+        root.addView(autoButton, buttonParams());
+
+        root.addView(button(
+                "Permitir acceso a notificaciones",
                 false,
-                v -> testOfficialPopup()
+                view -> openNotificationListenerSettings()
         ), buttonParams());
-        root.addView(makeButton(
-                "Desactivar globo",
+        root.addView(button(
+                "Permitir burbujas en Android",
                 false,
-                v -> stopBubble()
+                view -> openBubbleSettings()
+        ), buttonParams());
+        root.addView(button(
+                "Abrir Shizuku",
+                false,
+                view -> openShizuku()
+        ), buttonParams());
+        root.addView(button(
+                "Eliminar todos los globos",
+                false,
+                view -> removeAllBubbles()
         ), buttonParams());
 
-        LinearLayout appearance = makeCard();
-        appearance.addView(makeText("Aspecto del globo", 17, TEXT, true), matchWrap());
+        diagnosticView = text("", 12, 0xFFFCA5A5, false);
+        diagnosticView.setVisibility(View.GONE);
+        root.addView(diagnosticView, cardParams());
 
-        TextView sizeLabel = makeText(
-                "Tamaño: " + AppPreferences.getBubbleSize(this) + " dp",
-                13,
-                MUTED,
-                false
-        );
-        LinearLayout.LayoutParams labelParams = matchWrap();
-        labelParams.setMargins(0, dp(12), 0, 0);
-        appearance.addView(sizeLabel, labelParams);
-
-        SeekBar sizeSeek = new SeekBar(this);
-        sizeSeek.setMax(36);
-        sizeSeek.setProgress(AppPreferences.getBubbleSize(this) - 48);
-        sizeSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int value = 48 + progress;
-                sizeLabel.setText("Tamaño: " + value + " dp");
-                if (fromUser) {
-                    AppPreferences.setBubbleSize(MainActivity.this, value);
-                    refreshBubble();
-                }
-            }
-
-            @Override public void onStartTrackingTouch(SeekBar seekBar) { }
-            @Override public void onStopTrackingTouch(SeekBar seekBar) { }
-        });
-        appearance.addView(sizeSeek, matchWrap());
-
-        TextView opacityLabel = makeText(
-                "Opacidad: " + AppPreferences.getBubbleOpacity(this) + "%",
-                13,
-                MUTED,
-                false
-        );
-        appearance.addView(opacityLabel, labelParams);
-
-        SeekBar opacitySeek = new SeekBar(this);
-        opacitySeek.setMax(55);
-        opacitySeek.setProgress(AppPreferences.getBubbleOpacity(this) - 45);
-        opacitySeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int value = 45 + progress;
-                opacityLabel.setText("Opacidad: " + value + "%");
-                if (fromUser) {
-                    AppPreferences.setBubbleOpacity(MainActivity.this, value);
-                    refreshBubble();
-                }
-            }
-
-            @Override public void onStartTrackingTouch(SeekBar seekBar) { }
-            @Override public void onStopTrackingTouch(SeekBar seekBar) { }
-        });
-        appearance.addView(opacitySeek, matchWrap());
-        root.addView(appearance, cardParams());
-
-        TextView help = makeText(
-                "Toca el globo para abrir ChatGPT. Mantén pulsado para volver a esta pantalla. Arrástralo hacia la × para apagarlo.",
+        TextView help = text(
+                "Para escribir, toca el cuadro de texto dentro de ChatGPT. Si el teclado no aparece en la pantalla virtual, usa el botón ⌨ de la barra del globo.",
                 12,
                 MUTED,
                 false
         );
         help.setGravity(Gravity.CENTER);
         root.addView(help, matchWrap());
-
         return scroll;
     }
 
-    private void beginActivation() {
-        AppPreferences.setMode(this, AppPreferences.MODE_OFFICIAL);
-
-        if (!OfficialChatLauncher.isOfficialAppInstalled(this)) {
-            Toast.makeText(this, "La aplicación oficial de ChatGPT no está instalada", Toast.LENGTH_LONG).show();
-            openChatGptStorePage();
-            return;
-        }
-
-        if (!canDrawOverlays()) {
-            awaitingOverlayPermission = true;
-            Intent permission = new Intent(
-                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + getPackageName())
-            );
-            startActivity(permission);
-            return;
-        }
-
-        requestNotificationOrActivate();
+    private void createManualBubble() {
+        prepareShizuku(() -> runWithNotificationPermission(() -> {
+            if (!isChatGptInstalled()) {
+                Toast.makeText(this, "Instala primero ChatGPT oficial", Toast.LENGTH_LONG).show();
+                openChatGptStorePage();
+                return;
+            }
+            try {
+                AppPreferences.clearLastError(this);
+                BubbleRecord record = NativeBubblePublisher.publishManual(this, true);
+                Toast.makeText(this, record.title + " creado", Toast.LENGTH_SHORT).show();
+                getWindow().getDecorView().postDelayed(this::updateStatus, 350);
+                getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 750);
+            } catch (RuntimeException | LinkageError error) {
+                AppPreferences.recordError(this, "No se pudo crear el globo", error);
+                Toast.makeText(this, "Android rechazó el globo", Toast.LENGTH_LONG).show();
+                updateStatus();
+            }
+        }));
     }
 
-    private void requestNotificationOrActivate() {
+    private void toggleAutomaticBubbles() {
+        if (AppPreferences.isAutoBubblesEnabled(this)) {
+            AppPreferences.setAutoBubblesEnabled(this, false);
+            Toast.makeText(this, "Globos automáticos desactivados", Toast.LENGTH_SHORT).show();
+            updateStatus();
+            return;
+        }
+
+        prepareShizuku(() -> runWithNotificationPermission(() -> {
+            AppPreferences.setAutoBubblesEnabled(this, true);
+            if (!isNotificationListenerEnabled()) {
+                Toast.makeText(
+                        this,
+                        "Activa el acceso de Globo GPT a las notificaciones",
+                        Toast.LENGTH_LONG
+                ).show();
+                openNotificationListenerSettings();
+            } else {
+                Toast.makeText(this, "Globos automáticos activados", Toast.LENGTH_SHORT).show();
+            }
+            updateStatus();
+        }));
+    }
+
+    private void prepareShizuku(Runnable afterReady) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            Toast.makeText(this, "Se requiere Android 11 o posterior", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!ShizukuDisplayBridge.isInstalled(this)) {
+            Toast.makeText(this, "Instala Shizuku", Toast.LENGTH_LONG).show();
+            openShizuku();
+            return;
+        }
+        if (!ShizukuDisplayBridge.isRunning()) {
+            Toast.makeText(this, "Abre Shizuku y pulsa Iniciar", Toast.LENGTH_LONG).show();
+            openShizuku();
+            return;
+        }
+        if (!ShizukuDisplayBridge.hasPermission()) {
+            try {
+                if (Shizuku.shouldShowRequestPermissionRationale()) {
+                    Toast.makeText(
+                            this,
+                            "Autoriza Globo GPT desde la lista de aplicaciones de Shizuku",
+                            Toast.LENGTH_LONG
+                    ).show();
+                    openShizuku();
+                } else {
+                    pendingAfterShizukuPermission = afterReady;
+                    ShizukuDisplayBridge.requestPermission(SHIZUKU_PERMISSION_REQUEST);
+                }
+            } catch (RuntimeException error) {
+                AppPreferences.recordError(this, "No se pudo solicitar Shizuku", error);
+                openShizuku();
+            }
+            return;
+        }
+
+        ShizukuDisplayBridge.connect(this, new ShizukuDisplayBridge.ConnectionCallback() {
+            @Override
+            public void onReady() {
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this, "Shizuku listo", Toast.LENGTH_SHORT).show();
+                    updateStatus();
+                    if (afterReady != null) afterReady.run();
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+                runOnUiThread(() -> {
+                    AppPreferences.recordMessage(MainActivity.this, message);
+                    Toast.makeText(MainActivity.this, message, Toast.LENGTH_LONG).show();
+                    updateStatus();
+                });
+            }
+        });
+    }
+
+    private void onShizukuPermissionResult(int requestCode, int grantResult) {
+        if (requestCode != SHIZUKU_PERMISSION_REQUEST) return;
+        Runnable action = pendingAfterShizukuPermission;
+        pendingAfterShizukuPermission = null;
+        if (grantResult == PackageManager.PERMISSION_GRANTED) {
+            prepareShizuku(action);
+        } else {
+            Toast.makeText(this, "Permiso de Shizuku rechazado", Toast.LENGTH_LONG).show();
+            updateStatus();
+        }
+    }
+
+    private void runWithNotificationPermission(Runnable action) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
+            pendingAfterNotificationPermission = action;
             requestPermissions(
                     new String[]{Manifest.permission.POST_NOTIFICATIONS},
                     NOTIFICATION_PERMISSION_REQUEST
             );
             return;
         }
-        activateBubble();
+        action.run();
     }
 
-    private void activateBubble() {
-        AppPreferences.setMode(this, AppPreferences.MODE_OFFICIAL);
-        stopService(new Intent(this, BubbleService.class));
-        getWindow().getDecorView().postDelayed(() -> {
-            Intent service = new Intent(this, BubbleService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
-            else startService(service);
-            Toast.makeText(this, "Globo GPT activado", Toast.LENGTH_SHORT).show();
-            updateStatus();
-            getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 450);
-        }, 180);
-    }
-
-    private void stopBubble() {
-        stopService(new Intent(this, BubbleService.class));
-        Toast.makeText(this, "Globo GPT desactivado", Toast.LENGTH_SHORT).show();
-        getWindow().getDecorView().postDelayed(this::updateStatus, 180);
-    }
-
-    private void testOfficialPopup() {
-        if (!OfficialChatLauncher.isOfficialAppInstalled(this)) {
-            Toast.makeText(this, "La aplicación oficial de ChatGPT no está instalada", Toast.LENGTH_LONG).show();
-            openChatGptStorePage();
-            return;
-        }
-        moveTaskToBack(true);
-        if (!OfficialChatLauncher.openOfficialApp(this, true)) {
-            Toast.makeText(this, "Android impidió abrir ChatGPT", Toast.LENGTH_LONG).show();
-        }
-    }
-
-    private void refreshBubble() {
-        if (!BubbleService.isRunning) return;
-        Intent refresh = new Intent(this, BubbleService.class);
-        refresh.setAction(BubbleService.ACTION_REFRESH);
-        startService(refresh);
+    private void removeAllBubbles() {
+        NativeBubblePublisher.cancelAll(this);
+        VirtualDisplaySessions.releaseAll(this);
+        Toast.makeText(this, "Todos los globos fueron eliminados", Toast.LENGTH_SHORT).show();
+        updateStatus();
     }
 
     private void updateStatus() {
-        if (statusView == null || activateButton == null) return;
+        if (statusView == null || autoButton == null) return;
 
-        boolean installed = OfficialChatLauncher.isOfficialAppInstalled(this);
-        boolean overlay = canDrawOverlays();
-        boolean active = BubbleService.isRunning;
+        boolean chatGpt = isChatGptInstalled();
+        boolean shizukuInstalled = ShizukuDisplayBridge.isInstalled(this);
+        boolean shizukuRunning = ShizukuDisplayBridge.isRunning();
+        boolean shizukuPermission = ShizukuDisplayBridge.hasPermission();
+        boolean autoEnabled = AppPreferences.isAutoBubblesEnabled(this);
+        boolean listenerEnabled = isNotificationListenerEnabled();
+        int bubbleCount = NativeBubblePublisher.activeBubbleCount(this);
 
-        if (!installed) {
+        if (!chatGpt) {
             statusView.setText("Estado: falta instalar ChatGPT oficial");
             statusView.setTextColor(0xFFFCA5A5);
-            activateButton.setText("Instalar ChatGPT oficial");
-        } else if (!overlay) {
-            statusView.setText("Estado: falta permitir Aparecer encima");
+        } else if (!shizukuInstalled) {
+            statusView.setText("Estado: falta instalar Shizuku");
+            statusView.setTextColor(0xFFFCA5A5);
+        } else if (!shizukuRunning) {
+            statusView.setText("Estado: Shizuku está detenido");
             statusView.setTextColor(0xFFFBBF24);
-            activateButton.setText("Permitir globo flotante");
+        } else if (!shizukuPermission) {
+            statusView.setText("Estado: falta autorizar Globo GPT en Shizuku");
+            statusView.setTextColor(0xFFFBBF24);
         } else {
-            statusView.setText(active
-                    ? "Estado: globo activo · modo app oficial"
-                    : "Estado: listo · globo apagado");
-            statusView.setTextColor(active ? 0xFF34D399 : TEXT);
-            activateButton.setText(active ? "Reiniciar globo" : "Activar globo");
+            String autoState = !autoEnabled
+                    ? "automático desactivado"
+                    : (listenerEnabled ? "automático activo" : "automático sin permiso de lectura");
+            statusView.setText(
+                    "Estado: listo · " + bubbleCount
+                            + (bubbleCount == 1 ? " globo" : " globos")
+                            + " · " + autoState
+            );
+            statusView.setTextColor(0xFF34D399);
+        }
+
+        autoButton.setText(autoEnabled
+                ? "Desactivar globos automáticos"
+                : "Activar globos automáticos");
+
+        String diagnostic = AppPreferences.getLastError(this);
+        if (diagnostic.isEmpty()) {
+            diagnosticView.setVisibility(View.GONE);
+        } else {
+            diagnosticView.setText("Diagnóstico:\n" + diagnostic);
+            diagnosticView.setVisibility(View.VISIBLE);
         }
     }
 
-    private boolean canDrawOverlays() {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this);
+    private boolean isChatGptInstalled() {
+        return getPackageManager().getLaunchIntentForPackage(
+                NativeBubblePublisher.CHATGPT_PACKAGE
+        ) != null;
+    }
+
+    private boolean isNotificationListenerEnabled() {
+        String enabled = Settings.Secure.getString(
+                getContentResolver(),
+                "enabled_notification_listeners"
+        );
+        ComponentName component = new ComponentName(
+                this,
+                ChatGptNotificationListenerService.class
+        );
+        return enabled != null && enabled.contains(component.flattenToString());
+    }
+
+    private void openNotificationListenerSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+        } catch (ActivityNotFoundException error) {
+            Toast.makeText(this, "Android no expuso ese ajuste", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void openBubbleSettings() {
+        try {
+            Intent bubbles = new Intent("android.settings.APP_NOTIFICATION_BUBBLE_SETTINGS")
+                    .putExtra("android.provider.extra.APP_PACKAGE", getPackageName());
+            startActivity(bubbles);
+        } catch (ActivityNotFoundException error) {
+            try {
+                Intent notifications = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
+                startActivity(notifications);
+            } catch (ActivityNotFoundException ignored) {
+                startActivity(new Intent(
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                        Uri.parse("package:" + getPackageName())
+                ));
+            }
+        }
+    }
+
+    private void openShizuku() {
+        Intent launcher = getPackageManager().getLaunchIntentForPackage(
+                ShizukuDisplayBridge.SHIZUKU_PACKAGE
+        );
+        if (launcher != null) {
+            try {
+                startActivity(launcher);
+                return;
+            } catch (RuntimeException ignored) {
+            }
+        }
+        try {
+            startActivity(new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("market://details?id=" + ShizukuDisplayBridge.SHIZUKU_PACKAGE)
+            ));
+        } catch (ActivityNotFoundException error) {
+            startActivity(new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://shizuku.rikka.app/download/")
+            ));
+        }
     }
 
     private void openChatGptStorePage() {
         try {
             startActivity(new Intent(
                     Intent.ACTION_VIEW,
-                    Uri.parse("market://details?id=com.openai.chatgpt")
+                    Uri.parse("market://details?id=" + NativeBubblePublisher.CHATGPT_PACKAGE)
             ));
-        } catch (Exception ignored) {
+        } catch (ActivityNotFoundException ignored) {
             startActivity(new Intent(
                     Intent.ACTION_VIEW,
-                    Uri.parse("https://play.google.com/store/apps/details?id=com.openai.chatgpt")
+                    Uri.parse("https://play.google.com/store/apps/details?id="
+                            + NativeBubblePublisher.CHATGPT_PACKAGE)
             ));
         }
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(requestCode, permissions, results);
         if (requestCode != NOTIFICATION_PERMISSION_REQUEST) return;
-        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            activateBubble();
+
+        Runnable action = pendingAfterNotificationPermission;
+        pendingAfterNotificationPermission = null;
+        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
+            if (action != null) action.run();
         } else {
             Toast.makeText(
                     this,
-                    "Sin notificaciones Android puede ocultar el servicio del globo",
+                    "Sin notificaciones Android no puede crear los globos",
                     Toast.LENGTH_LONG
             ).show();
             updateStatus();
         }
     }
 
-    private LinearLayout makeCard() {
+    private LinearLayout card() {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(16), dp(15), dp(16), dp(15));
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(CARD);
-        background.setCornerRadius(dp(17));
-        background.setStroke(dp(1), BORDER);
-        card.setBackground(background);
+        card.setBackground(rounded(CARD, 17, BORDER));
         return card;
     }
 
-    private TextView makeText(String text, int size, int color, boolean bold) {
+    private TextView text(String value, int size, int color, boolean bold) {
         TextView view = new TextView(this);
-        view.setText(text);
+        view.setText(value);
         view.setTextSize(size);
         view.setTextColor(color);
         view.setLineSpacing(0, 1.14f);
@@ -375,20 +465,24 @@ public class MainActivity extends Activity {
         return view;
     }
 
-    private Button makeButton(String text, boolean primary, View.OnClickListener listener) {
+    private Button button(String value, boolean primary, View.OnClickListener listener) {
         Button button = new Button(this);
-        button.setText(text);
+        button.setText(value);
         button.setTextSize(14);
         button.setTextColor(Color.WHITE);
         button.setAllCaps(false);
         button.setGravity(Gravity.CENTER);
         button.setOnClickListener(listener);
-        GradientDrawable background = new GradientDrawable();
-        background.setColor(primary ? PRIMARY : 0xFF262626);
-        background.setCornerRadius(dp(14));
-        background.setStroke(dp(1), primary ? PRIMARY : BORDER);
-        button.setBackground(background);
+        button.setBackground(rounded(primary ? PRIMARY : 0xFF262626, 14, primary ? PRIMARY : BORDER));
         return button;
+    }
+
+    private GradientDrawable rounded(int color, int radiusDp, int borderColor) {
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(color);
+        background.setCornerRadius(dp(radiusDp));
+        background.setStroke(dp(1), borderColor);
+        return background;
     }
 
     private LinearLayout.LayoutParams cardParams() {
