@@ -74,6 +74,21 @@ jobs:
           cp traductor-leo/app/build/outputs/apk/debug/app-debug.apk artifact/Traductor-Leo-v1-debug.apk
           sha256sum artifact/Traductor-Leo-v1-debug.apk | tee artifact/SHA256.txt
 
+      - name: Verify APK structure, manifest and Android signature
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            echo '=== APK SIGNATURE ==='
+            "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs artifact/Traductor-Leo-v1-debug.apk
+            echo
+            echo '=== APK BADGING ==='
+            "$ANDROID_HOME/build-tools/35.0.0/aapt2" dump badging artifact/Traductor-Leo-v1-debug.apk
+            echo
+            echo '=== ZIP INTEGRITY ==='
+            unzip -t artifact/Traductor-Leo-v1-debug.apk
+          } | tee artifact/VERIFICATION.txt
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
