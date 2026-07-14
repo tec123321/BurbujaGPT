@@ -32,7 +32,6 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
-import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
@@ -273,43 +272,7 @@ public class ChatActivity extends Activity {
     }
 
     private void configureWebView() {
-        WebSettings settings = webView.getSettings();
-        settings.setJavaScriptEnabled(true);
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
-        settings.setAllowContentAccess(true);
-        settings.setAllowFileAccess(false);
-        settings.setSupportZoom(true);
-        settings.setBuiltInZoomControls(false);
-        settings.setDisplayZoomControls(false);
-        settings.setLoadWithOverviewMode(false);
-        settings.setUseWideViewPort(true);
-        settings.setMediaPlaybackRequiresUserGesture(true);
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-        settings.setSaveFormData(false);
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            settings.setOffscreenPreRaster(true);
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            settings.setSafeBrowsingEnabled(true);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            settings.setForceDark(WebSettings.FORCE_DARK_ON);
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            WebView.setWebContentsDebuggingEnabled(false);
-        }
-
-        CookieManager cookies = CookieManager.getInstance();
-        cookies.setAcceptCookie(true);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            cookies.setAcceptThirdPartyCookies(webView, true);
-        }
+        PersistentWebViewStore.applyBaseSettings(webView);
 
         webView.setWebViewClient(new ChatWebViewClient());
         webView.setWebChromeClient(new ChatWebChromeClient());
@@ -529,10 +492,16 @@ public class ChatActivity extends Activity {
 
         return host.equals("chatgpt.com")
                 || host.endsWith(".chatgpt.com")
+                || host.equals("chat.openai.com")
                 || host.equals("openai.com")
                 || host.endsWith(".openai.com")
                 || host.equals("auth0.com")
-                || host.endsWith(".auth0.com");
+                || host.endsWith(".auth0.com")
+                || host.equals("oaistatic.com")
+                || host.endsWith(".oaistatic.com")
+                || host.equals("oaiusercontent.com")
+                || host.endsWith(".oaiusercontent.com")
+                || host.equals("challenges.cloudflare.com");
     }
 
     private boolean isExternalIdentityProvider(Uri uri) {

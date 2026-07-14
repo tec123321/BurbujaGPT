@@ -76,6 +76,12 @@ public class BubbleService extends Service {
                 && AppPreferences.MODE_NATIVE.equals(AppPreferences.getMode(this));
         startForegroundNotification();
 
+        String selectedMode = AppPreferences.getMode(this);
+        if (AppPreferences.MODE_NATIVE.equals(selectedMode)
+                || AppPreferences.MODE_WEB.equals(selectedMode)) {
+            PersistentWebViewStore.prewarm(this);
+        }
+
         if (nativeSystemBubble && !AppPreferences.isNativeFallbackRequired(this)) {
             if (tryPostNativeBubble()) {
                 scheduleNativeBubbleVerification();
@@ -327,6 +333,7 @@ public class BubbleService extends Service {
 
     private void activateOverlayFallback(String reason) {
         nativeSystemBubble = false;
+        if (reason != null) AppPreferences.setNativeFallbackRequired(this, true);
         NotificationManager notifications = getSystemService(NotificationManager.class);
         if (notifications != null) notifications.cancel(NATIVE_BUBBLE_NOTIFICATION_ID);
 

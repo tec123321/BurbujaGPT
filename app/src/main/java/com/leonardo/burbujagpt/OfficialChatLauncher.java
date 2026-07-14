@@ -14,6 +14,7 @@ import java.lang.reflect.Method;
 /** Abre la aplicación oficial conservando su paquete, firma y sesión. */
 final class OfficialChatLauncher {
     private static final String CHATGPT_PACKAGE = "com.openai.chatgpt";
+    private static final String SHIZUKU_PACKAGE = "moe.shizuku.privileged.api";
     private static final String CHATGPT_URL = "https://chatgpt.com/";
     private static final int WINDOWING_MODE_FREEFORM = 5;
 
@@ -28,7 +29,9 @@ final class OfficialChatLauncher {
         Intent launcher = context.getPackageManager().getLaunchIntentForPackage(CHATGPT_PACKAGE);
         if (launcher == null) return false;
 
-        if (requestFloatingWindow && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        if (requestFloatingWindow
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                && isPackageInstalled(context, SHIZUKU_PACKAGE)) {
             try {
                 Intent bridge = new Intent(context, ShizukuLaunchActivity.class);
                 bridge.addFlags(
@@ -51,6 +54,15 @@ final class OfficialChatLauncher {
         );
         intent.removeFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
         return startWithOptionalBounds(context, intent, requestFloatingWindow);
+    }
+
+    private static boolean isPackageInstalled(Context context, String packageName) {
+        try {
+            context.getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (android.content.pm.PackageManager.NameNotFoundException error) {
+            return false;
+        }
     }
 
     static boolean openBrowser(Context context, String url, boolean requestFloatingWindow) {
