@@ -30,7 +30,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Publica conversaciones Android cuyo contenido es un minichat local y efímero. */
+/** Publica conversaciones Android que abren la aplicación oficial desde la tarea del globo. */
 final class WhatsAppBubblePublisher {
     static final String WHATSAPP_PACKAGE = "com.whatsapp";
     static final String EXTRA_CONVERSATION_TITLE =
@@ -52,12 +52,11 @@ final class WhatsAppBubblePublisher {
     }
 
     static void publishManual(Context context, boolean autoExpand) {
-        ConversationStore.ensure(MANUAL_TOKEN, "WhatsApp");
         publish(
                 context,
                 MANUAL_TOKEN,
                 "WhatsApp",
-                "Globo de prueba listo. Los mensajes aparecerán en su conversación.",
+                "Toca el globo para abrir la aplicación oficial",
                 autoExpand
         );
     }
@@ -69,11 +68,9 @@ final class WhatsAppBubblePublisher {
             String message,
             boolean autoExpand
     ) {
-        String token = tokenFor(sourceKey);
-        ConversationStore.ensure(token, title);
         publish(
                 context,
-                token,
+                tokenFor(sourceKey),
                 sanitize(title, 80, "WhatsApp"),
                 sanitize(message, 220, "Nuevo mensaje de WhatsApp"),
                 autoExpand
@@ -169,7 +166,7 @@ final class WhatsAppBubblePublisher {
                 "Conversaciones de WhatsApp",
                 NotificationManager.IMPORTANCE_DEFAULT
         );
-        channel.setDescription("Minichats locales para leer y responder mensajes de WhatsApp");
+        channel.setDescription("Globos nativos que abren la aplicación oficial de WhatsApp");
         channel.setShowBadge(true);
         channel.setSound(null, null);
         channel.enableVibration(false);
@@ -315,7 +312,6 @@ final class WhatsAppBubblePublisher {
         }
 
         prefs(context).edit().remove(KEY_ACTIVE_TOKENS).apply();
-        ConversationStore.clear();
     }
 
     static int getActiveBubbleCount(Context context) {

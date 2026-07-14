@@ -1,10 +1,8 @@
 package com.leonardo.globowhatsapp;
 
 import android.app.Activity;
-import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
-import android.content.IntentSender;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -12,83 +10,89 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.WindowManager;
-import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
-/** Minichat nativo que lee y responde mediante las acciones oficiales de notificación. */
-public final class NativeBubbleActivity extends Activity
-        implements ConversationStore.Listener {
+/**
+ * Actividad anfitriona que Android coloca en la burbuja. Usa exactamente la
+ * ruta estable de Globo GPT: inicia la actividad principal oficial desde la
+ * tarea ya creada por SystemUI, sin NEW_TASK, WebView ni ventana múltiple.
+ */
+public final class NativeBubbleActivity extends Activity {
+    private static final String STATE_ATTEMPTED = "attempted";
 
     private LinearLayout root;
     private TextView titleView;
-    private TextView subtitleView;
-    private ScrollView messagesScroll;
-    private LinearLayout messagesContainer;
-    private EditText replyInput;
-    private Button sendButton;
-    private String token = "manual";
-    private String fallbackTitle = "WhatsApp";
+    private TextView status;
+    private ProgressBar progress;
+    private boolean attempted;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(0xFF07110C);
         getWindow().setNavigationBarColor(0xFF07110C);
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         setContentView(buildUi());
-        bindIntent(getIntent());
+
+        attempted = savedInstanceState != null && savedInstanceState.getBoolean(STATE_ATTEMPTED);
+        updateConversationTitle();
+        if (!attempted) root.postDelayed(this::launchOfficialInsideBubble, 120L);
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        bindIntent(intent);
+        attempted = false;
+        updateConversationTitle();
+        showLoading("Abriendo WhatsApp…");
+        root.postDelayed(this::launchOfficialInsideBubble, 80L);
     }
 
     @Override
-    protected void onStart() {
-        super.onStart();
-        ConversationStore.addListener(this);
-        renderConversation();
+    protected void onSaveInstanceState(Bundle state) {
+        state.putBoolean(STATE_ATTEMPTED, attempted);
+        super.onSaveInstanceState(state);
     }
 
-    @Override
-    protected void onStop() {
-        ConversationStore.removeListener(this);
-        super.onStop();
-    }
+    private void launchOfficialInsideBubble() {
+        if (attempted || isFinishing()) return;
+        attempted = true;
 
-    @Override
-    public void onConversationChanged(String changedToken) {
-        if (token.equals(changedToken)) runOnUiThread(this::renderConversation);
-    }
+        Intent launcher = getPackageManager().getLaunchIntentForPackage(
+                WhatsAppBubblePublisher.WHATSAPP_PACKAGE
+        );
+        if (launcher == null || launcher.getComponent() == null) {
+            showError("WhatsApp oficial no está instalado o Android no permite localizarlo.");
+            return;
+        }
 
-    private void bindIntent(Intent intent) {
-        token = WhatsAppBubblePublisher.getConversationToken(intent);
-        fallbackTitle = WhatsAppBubblePublisher.getConversationTitle(intent);
-        ConversationStore.ensure(token, fallbackTitle);
-        renderConversation();
+        Intent target = new Intent(launcher);
+        // setFlags reemplaza FLAG_ACTIVITY_NEW_TASK incluido por el launcher.
+        // Así WhatsApp hereda la tarea incrustada de la burbuja, igual que Globo GPT.
+        target.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+
+        try {
+            startActivity(target);
+            overridePendingTransition(0, 0);
+            AppPreferences.clearLastError(this);
+            status.setText("WhatsApp se abrió dentro de la tarea de la burbuja.");
+        } catch (ActivityNotFoundException | SecurityException | IllegalArgumentException error) {
+            AppPreferences.recordError(this, "Android rechazó abrir WhatsApp en la burbuja", error);
+            showError("Android rechazó insertar la aplicación oficial en esta burbuja.");
+        }
     }
 
     private View buildUi() {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(0xFF0B1410);
+        root.setGravity(Gravity.CENTER);
+        root.setPadding(dp(24), dp(28), dp(24), dp(28));
+        root.setBackgroundColor(0xFF101A14);
 
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.HORIZONTAL);
-        header.setGravity(Gravity.CENTER_VERTICAL);
-        header.setPadding(dp(16), dp(14), dp(12), dp(12));
-        header.setBackgroundColor(0xFF15251B);
-
-        TextView icon = text("☎", 22, Color.WHITE, true);
+        TextView icon = text("☎", 33, Color.WHITE, true);
         icon.setGravity(Gravity.CENTER);
         GradientDrawable iconBackground = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
@@ -96,187 +100,78 @@ public final class NativeBubbleActivity extends Activity
         );
         iconBackground.setShape(GradientDrawable.OVAL);
         icon.setBackground(iconBackground);
-        header.addView(icon, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(68), dp(68));
+        iconParams.gravity = Gravity.CENTER_HORIZONTAL;
+        root.addView(icon, iconParams);
 
-        LinearLayout heading = new LinearLayout(this);
-        heading.setOrientation(LinearLayout.VERTICAL);
-        heading.setPadding(dp(12), 0, dp(8), 0);
-        titleView = text("WhatsApp", 18, 0xFFF4F7F5, true);
-        titleView.setSingleLine(true);
-        heading.addView(titleView, matchWrap());
-        subtitleView = text("Esperando un mensaje…", 12, 0xFFA9B7AE, false);
-        subtitleView.setSingleLine(true);
-        heading.addView(subtitleView, matchWrap());
-        header.addView(heading, new LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-        ));
+        titleView = text("WhatsApp", 22, 0xFFF5F5F5, true);
+        titleView.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams titleParams = matchWrap();
+        titleParams.setMargins(0, dp(16), 0, dp(8));
+        root.addView(titleView, titleParams);
 
-        Button openButton = compactButton("↗", view -> openWhatsApp());
-        openButton.setContentDescription("Abrir esta conversación en WhatsApp");
-        header.addView(openButton, new LinearLayout.LayoutParams(dp(46), dp(46)));
-        root.addView(header, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        status = text("Abriendo la aplicación oficial…", 14, 0xFFB9C6BE, false);
+        status.setGravity(Gravity.CENTER);
+        root.addView(status, matchWrap());
 
-        messagesContainer = new LinearLayout(this);
-        messagesContainer.setOrientation(LinearLayout.VERTICAL);
-        messagesContainer.setPadding(dp(12), dp(14), dp(12), dp(14));
-
-        messagesScroll = new ScrollView(this);
-        messagesScroll.setFillViewport(true);
-        messagesScroll.addView(messagesContainer, new ScrollView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        root.addView(messagesScroll, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-        ));
-
-        LinearLayout composer = new LinearLayout(this);
-        composer.setOrientation(LinearLayout.HORIZONTAL);
-        composer.setGravity(Gravity.CENTER_VERTICAL);
-        composer.setPadding(dp(10), dp(8), dp(10), dp(10));
-        composer.setBackgroundColor(0xFF101C15);
-
-        replyInput = new EditText(this);
-        replyInput.setSingleLine(true);
-        replyInput.setTextColor(0xFFF4F7F5);
-        replyInput.setHintTextColor(0xFF7F9185);
-        replyInput.setTextSize(15);
-        replyInput.setPadding(dp(15), 0, dp(14), 0);
-        replyInput.setImeOptions(EditorInfo.IME_ACTION_SEND);
-        replyInput.setBackground(roundedBackground(0xFF1C2C22, 0xFF34503D, 22));
-        replyInput.setOnEditorActionListener((view, actionId, event) -> {
-            if (actionId == EditorInfo.IME_ACTION_SEND) {
-                sendCurrentReply();
-                return true;
-            }
-            return false;
-        });
-        composer.addView(replyInput, new LinearLayout.LayoutParams(0, dp(48), 1f));
-
-        sendButton = compactButton("➤", view -> sendCurrentReply());
-        sendButton.setContentDescription("Enviar respuesta");
-        LinearLayout.LayoutParams sendParams = new LinearLayout.LayoutParams(dp(50), dp(48));
-        sendParams.setMargins(dp(8), 0, 0, 0);
-        composer.addView(sendButton, sendParams);
-        root.addView(composer, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        progress = new ProgressBar(this);
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(dp(36), dp(36));
+        progressParams.gravity = Gravity.CENTER_HORIZONTAL;
+        progressParams.setMargins(0, dp(18), 0, 0);
+        root.addView(progress, progressParams);
         return root;
     }
 
-    private void renderConversation() {
-        if (messagesContainer == null) return;
-        ConversationStore.Snapshot snapshot = ConversationStore.snapshot(token, fallbackTitle);
-        titleView.setText(snapshot.title);
-
-        messagesContainer.removeAllViews();
-        if (snapshot.messages.isEmpty()) {
-            TextView empty = text(
-                    "Cuando llegue un mensaje de WhatsApp, aparecerá aquí y podrás responder sin salir del globo.",
-                    14,
-                    0xFF9DAAA2,
-                    false
-            );
-            empty.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams emptyParams = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-            );
-            emptyParams.setMargins(dp(24), dp(90), dp(24), 0);
-            messagesContainer.addView(empty, emptyParams);
-        } else {
-            for (ConversationStore.MessageItem message : snapshot.messages) {
-                messagesContainer.addView(messageRow(message), messageRowParams());
-            }
+    private void updateConversationTitle() {
+        if (titleView != null) {
+            titleView.setText(WhatsAppBubblePublisher.getConversationTitle(getIntent()));
         }
-
-        replyInput.setEnabled(snapshot.canReply);
-        sendButton.setEnabled(snapshot.canReply);
-        sendButton.setAlpha(snapshot.canReply ? 1f : 0.42f);
-        if (snapshot.canReply) {
-            replyInput.setHint("Escribe una respuesta");
-            subtitleView.setText("Respuesta rápida disponible");
-        } else if (snapshot.messages.isEmpty()) {
-            replyInput.setHint("Espera un mensaje");
-            subtitleView.setText("Sin conversación activa");
-        } else {
-            replyInput.setHint("Respuesta no disponible");
-            subtitleView.setText("Abre WhatsApp para responder");
-        }
-
-        messagesScroll.post(() -> messagesScroll.fullScroll(View.FOCUS_DOWN));
     }
 
-    private View messageRow(ConversationStore.MessageItem message) {
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(message.outgoing ? Gravity.END : Gravity.START);
-
-        TextView bubble = text(message.text, 15, 0xFFF4F7F5, false);
-        bubble.setMaxWidth((int) (getResources().getDisplayMetrics().widthPixels * 0.76f));
-        bubble.setPadding(dp(13), dp(9), dp(13), dp(9));
-        bubble.setBackground(roundedBackground(
-                message.outgoing ? 0xFF075E54 : 0xFF1E3025,
-                message.outgoing ? 0xFF128C7E : 0xFF35513E,
-                16
-        ));
-        row.addView(bubble, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-        return row;
+    private void showLoading(String message) {
+        status.setText(message);
+        status.setTextColor(0xFFB9C6BE);
+        progress.setVisibility(View.VISIBLE);
+        removeActionButtons();
     }
 
-    private LinearLayout.LayoutParams messageRowParams() {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+    private void showError(String message) {
+        status.setText(message);
+        status.setTextColor(0xFFFCA5A5);
+        progress.setVisibility(View.GONE);
+        removeActionButtons();
+
+        Button retry = button("Reintentar", view -> {
+            attempted = false;
+            showLoading("Reintentando…");
+            root.postDelayed(this::launchOfficialInsideBubble, 100L);
+        });
+        retry.setTag("bubble_action");
+        LinearLayout.LayoutParams retryParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
+                dp(50)
         );
-        params.setMargins(0, 0, 0, dp(8));
-        return params;
+        retryParams.setMargins(0, dp(20), 0, 0);
+        root.addView(retry, retryParams);
+
+        Button settings = button("Volver a Globo WhatsApp", view -> {
+            startActivity(new Intent(this, MainActivity.class));
+            finish();
+        });
+        settings.setTag("bubble_action");
+        LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(50)
+        );
+        settingsParams.setMargins(0, dp(10), 0, 0);
+        root.addView(settings, settingsParams);
     }
 
-    private void sendCurrentReply() {
-        ConversationStore.SendResult result = ConversationStore.sendReply(
-                this,
-                token,
-                replyInput.getText().toString()
-        );
-        if (result.sent) replyInput.setText("");
-        else Toast.makeText(this, result.message, Toast.LENGTH_LONG).show();
-    }
-
-    private void openWhatsApp() {
-        PendingIntent conversation = ConversationStore.getOpenTarget(token);
-        if (conversation != null) {
-            try {
-                startIntentSender(conversation.getIntentSender(), null, 0, 0, 0);
-                return;
-            } catch (IntentSender.SendIntentException
-                     | SecurityException
-                     | IllegalArgumentException ignored) {
+    private void removeActionButtons() {
+        for (int index = root.getChildCount() - 1; index >= 0; index--) {
+            if ("bubble_action".equals(root.getChildAt(index).getTag())) {
+                root.removeViewAt(index);
             }
-        }
-
-        Intent launcher = getPackageManager().getLaunchIntentForPackage(
-                WhatsAppBubblePublisher.WHATSAPP_PACKAGE
-        );
-        if (launcher == null) {
-            Toast.makeText(this, "WhatsApp oficial no está instalado", Toast.LENGTH_LONG).show();
-            return;
-        }
-        launcher.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-        try {
-            startActivity(launcher);
-        } catch (ActivityNotFoundException | SecurityException error) {
-            Toast.makeText(this, "Android no pudo abrir WhatsApp", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -290,25 +185,19 @@ public final class NativeBubbleActivity extends Activity
         return view;
     }
 
-    private Button compactButton(String value, View.OnClickListener listener) {
+    private Button button(String value, View.OnClickListener listener) {
         Button button = new Button(this);
         button.setText(value);
-        button.setTextSize(20);
-        button.setTextColor(Color.WHITE);
         button.setAllCaps(false);
-        button.setGravity(Gravity.CENTER);
-        button.setPadding(0, 0, 0, 0);
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(14);
         button.setOnClickListener(listener);
-        button.setBackground(roundedBackground(0xFF16884C, 0xFF2CCB70, 23));
-        return button;
-    }
-
-    private GradientDrawable roundedBackground(int color, int stroke, int radiusDp) {
         GradientDrawable background = new GradientDrawable();
-        background.setColor(color);
-        background.setCornerRadius(dp(radiusDp));
-        background.setStroke(dp(1), stroke);
-        return background;
+        background.setColor(0xFF1E3928);
+        background.setCornerRadius(dp(14));
+        background.setStroke(dp(1), 0xFF31553D);
+        button.setBackground(background);
+        return button;
     }
 
     private LinearLayout.LayoutParams matchWrap() {

@@ -78,7 +78,7 @@ public final class MainActivity extends Activity {
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = text("Globo WhatsApp V1.1", 27, TEXT, true);
+        TextView title = text("Globo WhatsApp V1.2", 27, TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(14), 0, 0);
@@ -97,13 +97,13 @@ public final class MainActivity extends Activity {
 
         LinearLayout explanation = card();
         explanation.addView(text(
-                "Cada mensaje crea o actualiza un minichat dentro del globo. Puedes leerlo y responder mediante la acción oficial de respuesta rápida de WhatsApp.",
+                "Cada mensaje crea o actualiza un globo. Al abrirlo, se inicia la aplicación oficial de WhatsApp dentro de la misma tarea de la burbuja.",
                 14,
                 TEXT,
                 false
         ), matchWrap());
         TextView compatibility = text(
-                "La interfaz completa de WhatsApp no puede insertarse en un globo externo en Android 15. Por eso esta versión mantiene el chat dentro del globo y solo abre WhatsApp si pulsas ↗.",
+                "V1.2 usa el mismo mecanismo de Globo GPT: elimina NEW_TASK y reutiliza la tarea creada por Android para la burbuja. No usa WebView ni una ventana múltiple de Samsung.",
                 12,
                 MUTED,
                 false
@@ -124,7 +124,7 @@ public final class MainActivity extends Activity {
         root.addView(messageAccessButton, buttonParams());
 
         manualButton = button(
-                "Crear globo de prueba",
+                "Crear globo de WhatsApp",
                 false,
                 view -> beginManualActivation()
         );
@@ -213,7 +213,7 @@ public final class MainActivity extends Activity {
         try {
             AppPreferences.clearLastError(this);
             WhatsAppBubblePublisher.publishManual(this, true);
-            Toast.makeText(this, "Globo de prueba creado", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Globo de WhatsApp creado", Toast.LENGTH_SHORT).show();
             getWindow().getDecorView().postDelayed(this::updateStatus, 350L);
             getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 800L);
         } catch (RuntimeException | LinkageError error) {
@@ -254,7 +254,7 @@ public final class MainActivity extends Activity {
                 != PackageManager.PERMISSION_GRANTED) {
             statusView.setText("Estado: falta permitir notificaciones");
             statusView.setTextColor(0xFFFBBF24);
-            manualButton.setText("Permitir y crear globo de prueba");
+            manualButton.setText("Permitir y crear globo de WhatsApp");
             manualButton.setEnabled(true);
         } else {
             String bubbleLabel = activeBubbles == 1
@@ -265,7 +265,7 @@ public final class MainActivity extends Activity {
                     : "falta acceso a mensajes";
             statusView.setText("Estado: " + bubbleLabel + " · " + listenerLabel);
             statusView.setTextColor(listenerEnabled ? 0xFF34D399 : 0xFFFBBF24);
-            manualButton.setText("Crear globo de prueba");
+            manualButton.setText("Crear globo de WhatsApp");
             manualButton.setEnabled(true);
             messageAccessButton.setEnabled(true);
         }

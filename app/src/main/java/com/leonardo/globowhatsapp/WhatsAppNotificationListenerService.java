@@ -1,7 +1,6 @@
 package com.leonardo.globowhatsapp;
 
 import android.app.Notification;
-import android.app.PendingIntent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -16,7 +15,7 @@ import java.util.Map;
 
 /**
  * Convierte únicamente notificaciones de mensajes de com.whatsapp en burbujas locales.
- * Los títulos y mensajes se mantienen en memoria el tiempo mínimo necesario y nunca se guardan.
+ * El texto se usa para publicar la notificación y no se almacena en la aplicación.
  */
 public final class WhatsAppNotificationListenerService extends NotificationListenerService {
     private static final long DUPLICATE_WINDOW_MS = 1800L;
@@ -82,21 +81,7 @@ public final class WhatsAppNotificationListenerService extends NotificationListe
         }
         lastPublications.put(token, new LastPublication(fingerprint, now));
 
-        PendingIntent target = notification.contentIntent;
-        if (target != null
-                && !WhatsAppBubblePublisher.WHATSAPP_PACKAGE.equals(target.getCreatorPackage())) {
-            target = null;
-        }
-
         try {
-            ConversationStore.updateFromNotification(
-                    token,
-                    title,
-                    message,
-                    notification.when,
-                    target,
-                    notification.actions
-            );
             WhatsAppBubblePublisher.publishConversation(
                     getApplicationContext(),
                     sourceKey,

@@ -1,38 +1,42 @@
-# Globo WhatsApp V1.1
+# Globo WhatsApp V1.2
 
-Aplicación Android independiente que convierte las notificaciones de WhatsApp oficial en minichats dentro de burbujas nativas.
+Aplicación Android independiente que convierte las notificaciones de WhatsApp oficial en burbujas nativas y abre la aplicación oficial desde la tarea de la burbuja.
 
-## Corrección de V1.1
+## Corrección de V1.2
 
-La V1 intentaba iniciar una actividad de WhatsApp dentro de la tarea de la burbuja. En Android 15 / One UI, WhatsApp recupera su tarea propia y deja visible únicamente la actividad anfitriona. La V1.1 elimina ese intento: el contenido del globo ahora es una interfaz de chat propia y funcional.
+La V1 ejecutaba primero el `PendingIntent` original de la notificación. Android aceptaba esa llamada, pero la enviaba a la tarea normal de WhatsApp; por eso el panel del globo quedaba vacío y nunca se utilizaba el lanzamiento que sí funcionaba en Globo GPT.
+
+V1.2 elimina por completo esa ruta y aplica directamente el mismo mecanismo de Globo GPT:
+
+- Android crea una tarea nativa para `NativeBubbleActivity`.
+- La actividad obtiene el launcher oficial de `com.whatsapp`.
+- Reemplaza los flags del launcher por `FLAG_ACTIVITY_REORDER_TO_FRONT | FLAG_ACTIVITY_NO_ANIMATION`, eliminando `FLAG_ACTIVITY_NEW_TASK`.
+- La actividad oficial hereda la tarea de la burbuja.
+- No usa WebView, Shizuku, superposición ni ventana múltiple de Samsung.
 
 ## Comportamiento
 
+- El botón **Crear globo de WhatsApp** abre un globo manual.
 - Cada notificación entrante crea o actualiza un globo por conversación.
-- El globo muestra los mensajes recibidos desde que el proceso está activo.
-- Permite responder mediante `Notification.Action` y `RemoteInput`, la misma acción oficial **Responder** de la notificación de WhatsApp.
-- El botón ↗ abre la conversación en la aplicación oficial, en pantalla completa.
-- El globo manual sirve para comprobar la interfaz; una conversación real aparece cuando llega su notificación.
+- Al tocar el globo se inicia la aplicación oficial de WhatsApp desde esa tarea.
 - La aplicación oficial `com.whatsapp` permanece intacta.
+- Los globos se pueden eliminar desde la pantalla principal.
 
 ## Privacidad
 
-Android concede al servicio acceso técnico a todas las notificaciones. El servicio filtra por código antes de procesarlas y solo acepta `com.whatsapp`. Los mensajes permanecen exclusivamente en memoria, con un máximo de 60 por conversación, y desaparecen al cerrarse el proceso. La APK no solicita permiso de Internet.
+Android concede al servicio acceso técnico a todas las notificaciones. El servicio filtra por código antes de procesarlas y solo acepta `com.whatsapp`. Usa el título y el texto únicamente para publicar la burbuja; no mantiene un historial ni solicita permiso de Internet.
 
 ## Uso
 
-1. Instala WhatsApp oficial y actualiza a **Globo WhatsApp V1.1**.
-2. Abre Globo WhatsApp y permite sus notificaciones.
-3. Pulsa **Activar globos de mensajes** y habilita `Globo WhatsApp: mensajes`.
-4. Pulsa **Permitir burbujas en Android** y permite todas las conversaciones.
-5. Recibe un mensaje: aparecerá un globo con el minichat y el campo para responder.
+1. Instala Globo WhatsApp V1.2 encima de la versión anterior.
+2. Abre la aplicación y pulsa **Eliminar todos los globos** para descartar las tareas antiguas.
+3. Pulsa **Crear globo de WhatsApp** para probar el lanzamiento manual.
+4. Para los globos automáticos, activa **Globos de mensajes** y permite **Todas las conversaciones** en los ajustes de Android.
 
-## Límites
+## Límite que requiere prueba real
 
-- No reproduce toda la interfaz, el historial completo, imágenes, audios, llamadas o estados de WhatsApp.
-- La respuesta depende de que WhatsApp incluya una acción `RemoteInput` activa en su notificación.
-- Al desaparecer la notificación original, la acción de respuesta puede caducar; el siguiente mensaje la renueva.
+El código replica la ruta de lanzamiento de Globo GPT. La compilación puede comprobar la estructura, flags, permisos y firma, pero solo el teléfono puede confirmar cómo la versión instalada de WhatsApp declara y reutiliza su actividad principal en esa versión concreta de One UI.
 
 ## Compilar
 
-Ejecuta `gradle assembleRelease` con JDK 17 y Android SDK 35. El workflow **Build Globo WhatsApp APK** compila, ejecuta Lint Vital, valida permisos y alinea el APK release sin firma.
+Ejecuta `gradle assembleRelease` con JDK 17 y Android SDK 35. El workflow **Build Globo WhatsApp APK** compila, valida los permisos, verifica el ZIP y alinea el APK release sin firma.
