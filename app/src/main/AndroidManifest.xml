@@ -25,19 +25,6 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".NativeBubbleActivity"
-            android:allowEmbedded="true"
-            android:configChanges="keyboard|keyboardHidden|orientation|screenSize"
-            android:documentLaunchMode="always"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:label="WhatsApp"
-            android:launchMode="standard"
-            android:resizeableActivity="true"
-            android:taskAffinity="com.leonardo.globowhatsapp.nativebubble"
-            android:theme="@style/NativeBubbleTheme" />
-
         <service
             android:name=".WhatsAppNotificationListenerService"
             android:exported="true"

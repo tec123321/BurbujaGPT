@@ -78,7 +78,7 @@ public final class MainActivity extends Activity {
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = text("Globo WhatsApp V1.2", 27, TEXT, true);
+        TextView title = text("Globo WhatsApp V1.3", 27, TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(14), 0, 0);
@@ -97,13 +97,13 @@ public final class MainActivity extends Activity {
 
         LinearLayout explanation = card();
         explanation.addView(text(
-                "Cada mensaje crea o actualiza un globo. Al abrirlo, se inicia la aplicación oficial de WhatsApp dentro de la misma tarea de la burbuja.",
+                "El globo entrega directamente la actividad oficial de WhatsApp a Android. Ya no existe una pantalla anfitriona que pueda quedar vacía delante de la aplicación.",
                 14,
                 TEXT,
                 false
         ), matchWrap());
         TextView compatibility = text(
-                "V1.2 usa el mismo mecanismo de Globo GPT: elimina NEW_TASK y reutiliza la tarea creada por Android para la burbuja. No usa WebView ni una ventana múltiple de Samsung.",
+                "V1.3 usa WhatsApp como contenido raíz de BubbleMetadata. No usa WebView, minichat, superposición ni ventana múltiple de Samsung.",
                 12,
                 MUTED,
                 false

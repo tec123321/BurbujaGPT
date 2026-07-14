@@ -30,13 +30,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Publica conversaciones Android que abren la aplicación oficial desde la tarea del globo. */
+/** Publica conversaciones cuyo contenido raíz es la actividad oficial de WhatsApp. */
 final class WhatsAppBubblePublisher {
     static final String WHATSAPP_PACKAGE = "com.whatsapp";
-    static final String EXTRA_CONVERSATION_TITLE =
-            "com.leonardo.globowhatsapp.extra.CONVERSATION_TITLE";
-    static final String EXTRA_CONVERSATION_TOKEN =
-            "com.leonardo.globowhatsapp.extra.CONVERSATION_TOKEN";
 
     private static final String CHANNEL_ID = "whatsapp_native_bubbles_v1";
     private static final String SHORTCUT_PREFIX = "whatsapp_conversation_v1_";
@@ -105,16 +101,7 @@ final class WhatsAppBubblePublisher {
                 .build();
         publishShortcut(context, shortcuts, contact, officialIcon, token, title);
 
-        Intent bubbleIntent = createBubbleIntent(context, token, title);
-        int mutableFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                ? PendingIntent.FLAG_MUTABLE
-                : 0;
-        PendingIntent bubbleIntentToken = PendingIntent.getActivity(
-                context,
-                requestCode(token),
-                bubbleIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | mutableFlag
-        );
+        PendingIntent bubbleIntentToken = createDirectWhatsAppIntent(context, token);
 
         Intent settingsIntent = new Intent(context, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -166,7 +153,7 @@ final class WhatsAppBubblePublisher {
                 "Conversaciones de WhatsApp",
                 NotificationManager.IMPORTANCE_DEFAULT
         );
-        channel.setDescription("Globos nativos que abren la aplicación oficial de WhatsApp");
+        channel.setDescription("WhatsApp oficial como contenido raíz de la burbuja");
         channel.setShowBadge(true);
         channel.setSound(null, null);
         channel.enableVibration(false);
@@ -189,7 +176,7 @@ final class WhatsAppBubblePublisher {
                 .setIcon(officialIcon)
                 .setCategories(Collections.singleton(CATEGORY))
                 .setActivity(new ComponentName(context, MainActivity.class))
-                .setIntent(createBubbleIntent(context, token, title))
+                .setIntent(createShortcutIntent(context, token))
                 .setPerson(contact)
                 .setLongLived(true)
                 .build();
@@ -211,33 +198,33 @@ final class WhatsAppBubblePublisher {
         return false;
     }
 
-    private static Intent createBubbleIntent(
-            Context context,
-            String token,
-            String title
-    ) {
-        return new Intent(context, NativeBubbleActivity.class)
+    private static Intent createShortcutIntent(Context context, String token) {
+        return new Intent(context, MainActivity.class)
                 .setAction(Intent.ACTION_VIEW)
                 .setData(Uri.parse("globowhatsapp://conversation/" + Uri.encode(token)))
-                .putExtra(EXTRA_CONVERSATION_TITLE, title)
-                .putExtra(EXTRA_CONVERSATION_TOKEN, token)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
     }
 
-    static String getConversationToken(Intent intent) {
-        if (intent == null) return MANUAL_TOKEN;
-        String token = intent.getStringExtra(EXTRA_CONVERSATION_TOKEN);
-        if (!TextUtils.isEmpty(token)) return token;
-        Uri data = intent.getData();
-        if (data != null && !TextUtils.isEmpty(data.getLastPathSegment())) {
-            return data.getLastPathSegment();
+    private static PendingIntent createDirectWhatsAppIntent(Context context, String token) {
+        Intent launcher = context.getPackageManager().getLaunchIntentForPackage(WHATSAPP_PACKAGE);
+        if (launcher == null || launcher.getComponent() == null) {
+            throw new IllegalStateException("WhatsApp oficial no está instalado");
         }
-        return MANUAL_TOKEN;
-    }
 
-    static String getConversationTitle(Intent intent) {
-        if (intent == null) return "WhatsApp";
-        return sanitize(intent.getStringExtra(EXTRA_CONVERSATION_TITLE), 80, "WhatsApp");
+        Intent target = new Intent(launcher);
+        // SystemUI crea la tarea flotante. El PendingIntent apunta directamente
+        // a WhatsApp: ya no existe una actividad anfitriona que pueda quedar vacía.
+        target.setFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+
+        int mutableFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ? PendingIntent.FLAG_MUTABLE
+                : 0;
+        return PendingIntent.getActivity(
+                context,
+                requestCode(token),
+                target,
+                PendingIntent.FLAG_UPDATE_CURRENT | mutableFlag
+        );
     }
 
     static String tokenFor(String sourceKey) {
