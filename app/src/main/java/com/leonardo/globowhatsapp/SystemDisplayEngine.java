@@ -1,5 +1,6 @@
 package com.leonardo.globowhatsapp;
 
+import android.annotation.SuppressLint;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -307,6 +308,7 @@ final class SystemDisplayEngine {
         }
     }
 
+    @SuppressLint("BlockedPrivateApi")
     private static void prepareInputMethods() throws Exception {
         Class<?> inputInterface = Class.forName("android.hardware.input.IInputManager");
         inputInjectMethod = inputInterface.getMethod(

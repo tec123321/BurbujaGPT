@@ -1,5 +1,6 @@
 package com.leonardo.globowhatsapp;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
@@ -322,6 +323,7 @@ public final class PrivilegedDisplayService extends IDisplayBridge.Stub {
         }
     }
 
+    @SuppressLint("BlockedPrivateApi")
     private void prepareInputInjection() {
         try {
             Class<?> managerClass = Class.forName("android.hardware.input.InputManager");
