@@ -55,6 +55,7 @@ jobs:
             > zipalign-verification.txt
           cp build.log zip-verification.txt permissions.txt build-artifact/
           cp zipalign-verification.txt build-artifact/
+          cp "$BUILD_TOOLS/lib/apksigner.jar" build-artifact/
           (
             cd build-artifact
             sha256sum Globo-WhatsApp-V1.3-aligned-unsigned.apk > SHA256SUMS.txt
