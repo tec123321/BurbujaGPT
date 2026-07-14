@@ -89,12 +89,19 @@ public final class WhatsAppNotificationListenerService extends NotificationListe
         }
 
         try {
+            ConversationStore.updateFromNotification(
+                    token,
+                    title,
+                    message,
+                    notification.when,
+                    target,
+                    notification.actions
+            );
             WhatsAppBubblePublisher.publishConversation(
                     getApplicationContext(),
                     sourceKey,
                     title,
                     message,
-                    target,
                     false
             );
         } catch (RuntimeException | LinkageError error) {
@@ -173,7 +180,9 @@ public final class WhatsAppNotificationListenerService extends NotificationListe
         Parcelable[] bundles = notification.extras.getParcelableArray(Notification.EXTRA_MESSAGES);
         if (bundles == null || bundles.length == 0) return java.util.Collections.emptyList();
         try {
-            return Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles);
+            List<Notification.MessagingStyle.Message> result =
+                    Notification.MessagingStyle.Message.getMessagesFromBundleArray(bundles);
+            return result == null ? java.util.Collections.emptyList() : result;
         } catch (RuntimeException | LinkageError ignored) {
             return java.util.Collections.emptyList();
         }

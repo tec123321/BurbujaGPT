@@ -30,13 +30,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Publica conversaciones Android que intentan abrir la aplicación oficial de WhatsApp. */
+/** Publica conversaciones Android cuyo contenido es un minichat local y efímero. */
 final class WhatsAppBubblePublisher {
     static final String WHATSAPP_PACKAGE = "com.whatsapp";
     static final String EXTRA_CONVERSATION_TITLE =
             "com.leonardo.globowhatsapp.extra.CONVERSATION_TITLE";
-    static final String EXTRA_TARGET_PENDING_INTENT =
-            "com.leonardo.globowhatsapp.extra.TARGET_PENDING_INTENT";
+    static final String EXTRA_CONVERSATION_TOKEN =
+            "com.leonardo.globowhatsapp.extra.CONVERSATION_TOKEN";
 
     private static final String CHANNEL_ID = "whatsapp_native_bubbles_v1";
     private static final String SHORTCUT_PREFIX = "whatsapp_conversation_v1_";
@@ -52,12 +52,12 @@ final class WhatsAppBubblePublisher {
     }
 
     static void publishManual(Context context, boolean autoExpand) {
+        ConversationStore.ensure(MANUAL_TOKEN, "WhatsApp");
         publish(
                 context,
                 MANUAL_TOKEN,
                 "WhatsApp",
-                "Toca el globo para abrir la aplicación oficial",
-                null,
+                "Globo de prueba listo. Los mensajes aparecerán en su conversación.",
                 autoExpand
         );
     }
@@ -67,16 +67,15 @@ final class WhatsAppBubblePublisher {
             String sourceKey,
             String title,
             String message,
-            PendingIntent target,
             boolean autoExpand
     ) {
-        if (target != null && !WHATSAPP_PACKAGE.equals(target.getCreatorPackage())) target = null;
+        String token = tokenFor(sourceKey);
+        ConversationStore.ensure(token, title);
         publish(
                 context,
-                tokenFor(sourceKey),
+                token,
                 sanitize(title, 80, "WhatsApp"),
                 sanitize(message, 220, "Nuevo mensaje de WhatsApp"),
-                target,
                 autoExpand
         );
     }
@@ -86,7 +85,6 @@ final class WhatsAppBubblePublisher {
             String token,
             String title,
             String message,
-            PendingIntent target,
             boolean autoExpand
     ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
@@ -108,9 +106,9 @@ final class WhatsAppBubblePublisher {
                 .setIcon(officialIcon)
                 .setImportant(true)
                 .build();
-        publishShortcut(context, shortcuts, contact, officialIcon, token, title, target);
+        publishShortcut(context, shortcuts, contact, officialIcon, token, title);
 
-        Intent bubbleIntent = createBubbleIntent(context, token, title, target);
+        Intent bubbleIntent = createBubbleIntent(context, token, title);
         int mutableFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                 ? PendingIntent.FLAG_MUTABLE
                 : 0;
@@ -171,7 +169,7 @@ final class WhatsAppBubblePublisher {
                 "Conversaciones de WhatsApp",
                 NotificationManager.IMPORTANCE_DEFAULT
         );
-        channel.setDescription("Globos locales que abren conversaciones de WhatsApp oficial");
+        channel.setDescription("Minichats locales para leer y responder mensajes de WhatsApp");
         channel.setShowBadge(true);
         channel.setSound(null, null);
         channel.enableVibration(false);
@@ -185,8 +183,7 @@ final class WhatsAppBubblePublisher {
             Person contact,
             Icon officialIcon,
             String token,
-            String title,
-            PendingIntent target
+            String title
     ) {
         String shortcutId = shortcutId(token);
         ShortcutInfo shortcut = new ShortcutInfo.Builder(context, shortcutId)
@@ -195,9 +192,7 @@ final class WhatsAppBubblePublisher {
                 .setIcon(officialIcon)
                 .setCategories(Collections.singleton(CATEGORY))
                 .setActivity(new ComponentName(context, MainActivity.class))
-                // Los accesos persistentes solo aceptan extras simples. El PendingIntent
-                // concreto se conserva exclusivamente en el PendingIntent de la burbuja.
-                .setIntent(createBubbleIntent(context, token, title, null))
+                .setIntent(createBubbleIntent(context, token, title))
                 .setPerson(contact)
                 .setLongLived(true)
                 .build();
@@ -222,30 +217,25 @@ final class WhatsAppBubblePublisher {
     private static Intent createBubbleIntent(
             Context context,
             String token,
-            String title,
-            PendingIntent target
+            String title
     ) {
-        Intent intent = new Intent(context, NativeBubbleActivity.class)
+        return new Intent(context, NativeBubbleActivity.class)
                 .setAction(Intent.ACTION_VIEW)
                 .setData(Uri.parse("globowhatsapp://conversation/" + Uri.encode(token)))
                 .putExtra(EXTRA_CONVERSATION_TITLE, title)
+                .putExtra(EXTRA_CONVERSATION_TOKEN, token)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
-        if (target != null) intent.putExtra(EXTRA_TARGET_PENDING_INTENT, target);
-        return intent;
     }
 
-    static PendingIntent getTargetPendingIntent(Intent intent) {
-        if (intent == null) return null;
-        PendingIntent target;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            target = intent.getParcelableExtra(EXTRA_TARGET_PENDING_INTENT, PendingIntent.class);
-        } else {
-            @SuppressWarnings("deprecation")
-            PendingIntent legacy = intent.getParcelableExtra(EXTRA_TARGET_PENDING_INTENT);
-            target = legacy;
+    static String getConversationToken(Intent intent) {
+        if (intent == null) return MANUAL_TOKEN;
+        String token = intent.getStringExtra(EXTRA_CONVERSATION_TOKEN);
+        if (!TextUtils.isEmpty(token)) return token;
+        Uri data = intent.getData();
+        if (data != null && !TextUtils.isEmpty(data.getLastPathSegment())) {
+            return data.getLastPathSegment();
         }
-        if (target != null && WHATSAPP_PACKAGE.equals(target.getCreatorPackage())) return target;
-        return null;
+        return MANUAL_TOKEN;
     }
 
     static String getConversationTitle(Intent intent) {
@@ -325,6 +315,7 @@ final class WhatsAppBubblePublisher {
         }
 
         prefs(context).edit().remove(KEY_ACTIVE_TOKENS).apply();
+        ConversationStore.clear();
     }
 
     static int getActiveBubbleCount(Context context) {

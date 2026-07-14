@@ -49,28 +49,28 @@ jobs:
           mkdir -p build-artifact
           "$BUILD_TOOLS/zipalign" -f -p 4 \
             "$APK" \
-            build-artifact/Globo-WhatsApp-V1-aligned-unsigned.apk
+            build-artifact/Globo-WhatsApp-V1.1-aligned-unsigned.apk
           "$BUILD_TOOLS/zipalign" -c -v 4 \
-            build-artifact/Globo-WhatsApp-V1-aligned-unsigned.apk \
+            build-artifact/Globo-WhatsApp-V1.1-aligned-unsigned.apk \
             > zipalign-verification.txt
           cp build.log zip-verification.txt permissions.txt build-artifact/
           cp zipalign-verification.txt build-artifact/
           (
             cd build-artifact
-            sha256sum Globo-WhatsApp-V1-aligned-unsigned.apk > SHA256SUMS.txt
+            sha256sum Globo-WhatsApp-V1.1-aligned-unsigned.apk > SHA256SUMS.txt
           )
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-WhatsApp-V1-build-log
+          name: Globo-WhatsApp-V1.1-build-log
           path: build.log
 
       - name: Upload unsigned APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-WhatsApp-V1-unsigned
+          name: Globo-WhatsApp-V1.1-unsigned
           path: build-artifact/
           retention-days: 30
