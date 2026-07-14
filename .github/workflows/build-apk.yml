@@ -1,9 +1,7 @@
-name: Build APK
+name: Build Globo WhatsApp V2 APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
 
@@ -25,25 +23,55 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
+      - name: Build unsigned release APK
         shell: bash
         run: |
           set +e
-          gradle assembleDebug > build.log 2>&1
+          gradle assembleRelease > build.log 2>&1
           status=$?
           cat build.log
           exit $status
+
+      - name: Verify archive and requested permissions
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          test -s "$APK"
+          unzip -t "$APK" > zip-verification.txt
+          "$BUILD_TOOLS/aapt" dump permissions "$APK" | tee permissions.txt
+          if grep -Eq 'android.permission.(INTERNET|SYSTEM_ALERT_WINDOW|BIND_ACCESSIBILITY_SERVICE|RECORD_AUDIO|READ_CONTACTS|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE)' permissions.txt; then
+            echo "Se detectó un permiso prohibido" >&2
+            exit 1
+          fi
+          mkdir -p build-artifact
+          "$BUILD_TOOLS/zipalign" -f -p 4 \
+            "$APK" \
+            build-artifact/Globo-WhatsApp-V2-aligned-unsigned.apk
+          "$BUILD_TOOLS/zipalign" -c -v 4 \
+            build-artifact/Globo-WhatsApp-V2-aligned-unsigned.apk \
+            > zipalign-verification.txt
+          cp build.log zip-verification.txt permissions.txt build-artifact/
+          cp zipalign-verification.txt build-artifact/
+          cp "$BUILD_TOOLS/lib/apksigner.jar" build-artifact/
+          (
+            cd build-artifact
+            sha256sum Globo-WhatsApp-V2-aligned-unsigned.apk > SHA256SUMS.txt
+          )
 
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-GPT-V12-build-log
+          name: Globo-WhatsApp-V2-build-log
           path: build.log
 
-      - name: Upload APK
+      - name: Upload unsigned APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-GPT-V12-Shizuku-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Globo-WhatsApp-V2-unsigned
+          path: build-artifact/
+          retention-days: 30
