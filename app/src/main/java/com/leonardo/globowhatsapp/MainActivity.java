@@ -22,9 +22,12 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import rikka.shizuku.Shizuku;
+
 /** Configura el globo manual y los globos derivados de mensajes de WhatsApp. */
 public final class MainActivity extends Activity {
     private static final int NOTIFICATION_PERMISSION_REQUEST = 2300;
+    private static final int SHIZUKU_PERMISSION_REQUEST = 2301;
     private static final int BACKGROUND = 0xFF050806;
     private static final int CARD = 0xFF132017;
     private static final int BORDER = 0xFF294332;
@@ -36,13 +39,18 @@ public final class MainActivity extends Activity {
     private TextView diagnosticView;
     private Button manualButton;
     private Button messageAccessButton;
+    private Button shizukuButton;
     private boolean pendingManualBubble;
+
+    private final Shizuku.OnRequestPermissionResultListener shizukuPermissionListener =
+            this::onShizukuPermissionResult;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(0xFF07110C);
         getWindow().setNavigationBarColor(0xFF07110C);
+        Shizuku.addRequestPermissionResultListener(shizukuPermissionListener);
         setContentView(buildUi());
     }
 
@@ -78,7 +86,7 @@ public final class MainActivity extends Activity {
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = text("Globo WhatsApp V1.3", 27, TEXT, true);
+        TextView title = text("Globo WhatsApp V2", 27, TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(14), 0, 0);
@@ -97,13 +105,13 @@ public final class MainActivity extends Activity {
 
         LinearLayout explanation = card();
         explanation.addView(text(
-                "El globo entrega directamente la actividad oficial de WhatsApp a Android. Ya no existe una pantalla anfitriona que pueda quedar vacía delante de la aplicación.",
+                "V2 ejecuta WhatsApp oficial en una pantalla virtual y muestra esa pantalla dentro del globo. Así One UI ya no puede sacar la aplicación del panel por usar una tarea normal.",
                 14,
                 TEXT,
                 false
         ), matchWrap());
         TextView compatibility = text(
-                "V1.3 usa WhatsApp como contenido raíz de BubbleMetadata. No usa WebView, minichat, superposición ni ventana múltiple de Samsung.",
+                "Este método necesita Shizuku activo. No usa WebView, no modifica WhatsApp y conserva la sesión de la aplicación oficial.",
                 12,
                 MUTED,
                 false
@@ -116,9 +124,16 @@ public final class MainActivity extends Activity {
         statusView = text("", 14, TEXT, true);
         root.addView(statusView, cardParams());
 
+        shizukuButton = button(
+                "Preparar Shizuku",
+                true,
+                view -> prepareShizuku()
+        );
+        root.addView(shizukuButton, buttonParams());
+
         messageAccessButton = button(
                 "Activar globos de mensajes",
-                true,
+                false,
                 view -> beginMessageAccessActivation()
         );
         root.addView(messageAccessButton, buttonParams());
@@ -145,7 +160,7 @@ public final class MainActivity extends Activity {
         LinearLayout privacy = card();
         privacy.addView(text("Privacidad", 14, TEXT, true), matchWrap());
         TextView privacyBody = text(
-                "Android mostrará un aviso amplio de acceso a notificaciones. El permiso técnicamente permite ver todas, pero esta APK solo procesa com.whatsapp. No guarda nombres ni mensajes y no tiene permiso de Internet.",
+                "El acceso a notificaciones técnicamente permite ver todas, pero la APK filtra com.whatsapp y no guarda historial. Shizuku concede capacidad de nivel shell; esta versión la usa para crear la pantalla virtual, mover la tarea de WhatsApp e inyectar los toques. La APK no tiene permiso de Internet.",
                 12,
                 MUTED,
                 false
@@ -160,7 +175,7 @@ public final class MainActivity extends Activity {
         root.addView(diagnosticView, cardParams());
 
         TextView help = text(
-                "Después de activar el acceso, permite “Todas las conversaciones” en los ajustes de burbujas de Globo WhatsApp.",
+                "Orden: inicia Shizuku, autoriza Globo WhatsApp, permite las notificaciones y luego crea el globo.",
                 12,
                 MUTED,
                 false
@@ -180,6 +195,25 @@ public final class MainActivity extends Activity {
         if (!isWhatsAppInstalled()) {
             Toast.makeText(this, "WhatsApp oficial no está instalado", Toast.LENGTH_LONG).show();
             openWhatsAppStorePage();
+            return;
+        }
+        if (!ShizukuDisplayBridge.isInstalled(this)
+                || !ShizukuDisplayBridge.isRunning()) {
+            Toast.makeText(
+                    this,
+                    "Inicia Shizuku antes de crear el globo",
+                    Toast.LENGTH_LONG
+            ).show();
+            openShizuku();
+            return;
+        }
+        if (!ShizukuDisplayBridge.hasPermission()) {
+            try {
+                ShizukuDisplayBridge.requestPermission(SHIZUKU_PERMISSION_REQUEST);
+            } catch (RuntimeException error) {
+                AppPreferences.recordError(this, "No se pudo solicitar Shizuku", error);
+                openShizuku();
+            }
             return;
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
@@ -209,6 +243,38 @@ public final class MainActivity extends Activity {
         openNotificationListenerSettings();
     }
 
+    private void prepareShizuku() {
+        pendingManualBubble = false;
+        if (!ShizukuDisplayBridge.isInstalled(this)
+                || !ShizukuDisplayBridge.isRunning()) {
+            openShizuku();
+            return;
+        }
+        if (!ShizukuDisplayBridge.hasPermission()) {
+            try {
+                ShizukuDisplayBridge.requestPermission(SHIZUKU_PERMISSION_REQUEST);
+            } catch (RuntimeException error) {
+                AppPreferences.recordError(this, "No se pudo solicitar Shizuku", error);
+                updateStatus();
+            }
+            return;
+        }
+        Toast.makeText(this, "Shizuku ya está preparado", Toast.LENGTH_SHORT).show();
+        updateStatus();
+    }
+
+    private void onShizukuPermissionResult(int requestCode, int grantResult) {
+        if (requestCode != SHIZUKU_PERMISSION_REQUEST) return;
+        if (grantResult == PackageManager.PERMISSION_GRANTED) {
+            AppPreferences.clearLastError(this);
+            if (pendingManualBubble) beginManualActivation();
+            else updateStatus();
+        } else {
+            Toast.makeText(this, "Shizuku no fue autorizado", Toast.LENGTH_LONG).show();
+            updateStatus();
+        }
+    }
+
     private void publishManualBubble() {
         try {
             AppPreferences.clearLastError(this);
@@ -230,10 +296,21 @@ public final class MainActivity extends Activity {
     }
 
     private void updateStatus() {
-        if (statusView == null || manualButton == null || messageAccessButton == null) return;
+        if (statusView == null
+                || manualButton == null
+                || messageAccessButton == null
+                || shizukuButton == null) return;
 
         boolean listenerEnabled = isNotificationListenerEnabled();
+        boolean shizukuInstalled = ShizukuDisplayBridge.isInstalled(this);
+        boolean shizukuRunning = ShizukuDisplayBridge.isRunning();
+        boolean shizukuReady = shizukuRunning && ShizukuDisplayBridge.hasPermission();
         int activeBubbles = WhatsAppBubblePublisher.getActiveBubbleCount(this);
+
+        shizukuButton.setText(shizukuReady
+                ? "Shizuku: preparado"
+                : shizukuRunning ? "Autorizar Globo WhatsApp en Shizuku"
+                : shizukuInstalled ? "Abrir e iniciar Shizuku" : "Instalar Shizuku");
 
         messageAccessButton.setText(listenerEnabled
                 ? "Globos de mensajes: activados"
@@ -248,6 +325,13 @@ public final class MainActivity extends Activity {
             statusView.setText("Estado: falta instalar WhatsApp oficial");
             statusView.setTextColor(0xFFFCA5A5);
             manualButton.setText("Instalar WhatsApp oficial");
+            manualButton.setEnabled(true);
+        } else if (!shizukuReady) {
+            statusView.setText(shizukuRunning
+                    ? "Estado: falta autorizar Shizuku"
+                    : "Estado: Shizuku no está iniciado");
+            statusView.setTextColor(0xFFFBBF24);
+            manualButton.setText("Preparar Shizuku y crear globo");
             manualButton.setEnabled(true);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
@@ -322,6 +406,30 @@ public final class MainActivity extends Activity {
         ));
     }
 
+    private void openShizuku() {
+        Intent launcher = getPackageManager().getLaunchIntentForPackage(
+                ShizukuDisplayBridge.SHIZUKU_PACKAGE
+        );
+        if (launcher != null) {
+            try {
+                startActivity(launcher);
+                return;
+            } catch (RuntimeException ignored) {
+            }
+        }
+        try {
+            startActivity(new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("market://details?id=" + ShizukuDisplayBridge.SHIZUKU_PACKAGE)
+            ));
+        } catch (ActivityNotFoundException error) {
+            startActivity(new Intent(
+                    Intent.ACTION_VIEW,
+                    Uri.parse("https://shizuku.rikka.app/download/")
+            ));
+        }
+    }
+
     private boolean isWhatsAppInstalled() {
         return getPackageManager().getLaunchIntentForPackage(
                 WhatsAppBubblePublisher.WHATSAPP_PACKAGE
@@ -359,6 +467,12 @@ public final class MainActivity extends Activity {
             updateStatus();
         }
         pendingManualBubble = false;
+    }
+
+    @Override
+    protected void onDestroy() {
+        Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener);
+        super.onDestroy();
     }
 
     private LinearLayout card() {

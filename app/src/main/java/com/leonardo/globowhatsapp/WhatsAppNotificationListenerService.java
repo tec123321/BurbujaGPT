@@ -1,6 +1,8 @@
 package com.leonardo.globowhatsapp;
 
+import android.app.ActivityOptions;
 import android.app.Notification;
+import android.app.PendingIntent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -19,6 +21,7 @@ import java.util.Map;
  */
 public final class WhatsAppNotificationListenerService extends NotificationListenerService {
     private static final long DUPLICATE_WINDOW_MS = 1800L;
+    private static volatile WhatsAppNotificationListenerService activeInstance;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Map<String, LastPublication> lastPublications = new HashMap<>();
@@ -26,7 +29,14 @@ public final class WhatsAppNotificationListenerService extends NotificationListe
     @Override
     public void onListenerConnected() {
         super.onListenerConnected();
+        activeInstance = this;
         mainHandler.postDelayed(this::publishUnreadConversations, 450L);
+    }
+
+    @Override
+    public void onListenerDisconnected() {
+        activeInstance = null;
+        super.onListenerDisconnected();
     }
 
     @Override
@@ -36,6 +46,7 @@ public final class WhatsAppNotificationListenerService extends NotificationListe
 
     @Override
     public void onDestroy() {
+        if (activeInstance == this) activeInstance = null;
         mainHandler.removeCallbacksAndMessages(null);
         lastPublications.clear();
         super.onDestroy();
@@ -85,6 +96,7 @@ public final class WhatsAppNotificationListenerService extends NotificationListe
             WhatsAppBubblePublisher.publishConversation(
                     getApplicationContext(),
                     sourceKey,
+                    posted.getKey(),
                     title,
                     message,
                     false
@@ -96,6 +108,45 @@ public final class WhatsAppNotificationListenerService extends NotificationListe
                     error
             );
         }
+    }
+
+    /** Abre el PendingIntent original de WhatsApp directamente en el display del globo. */
+    static boolean openSourceNotificationOnDisplay(String key, int displayId) {
+        WhatsAppNotificationListenerService service = activeInstance;
+        if (service == null || TextUtils.isEmpty(key) || displayId < 0) return false;
+
+        try {
+            StatusBarNotification[] active = service.getActiveNotifications();
+            if (active == null) return false;
+            for (StatusBarNotification item : active) {
+                if (item == null || !key.equals(item.getKey())) continue;
+                Notification notification = item.getNotification();
+                PendingIntent contentIntent = notification == null
+                        ? null
+                        : notification.contentIntent;
+                if (contentIntent == null) return false;
+
+                ActivityOptions options = ActivityOptions.makeBasic();
+                options.setLaunchDisplayId(displayId);
+                contentIntent.send(
+                        service,
+                        0,
+                        null,
+                        null,
+                        null,
+                        null,
+                        options.toBundle()
+                );
+                return true;
+            }
+        } catch (PendingIntent.CanceledException | RuntimeException error) {
+            AppPreferences.recordError(
+                    service,
+                    "No se pudo abrir la conversación original en el globo",
+                    error
+            );
+        }
+        return false;
     }
 
     private boolean isMessageNotification(Notification notification) {
