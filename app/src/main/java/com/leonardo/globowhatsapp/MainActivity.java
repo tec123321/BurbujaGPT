@@ -1,4 +1,4 @@
-package com.leonardo.burbujagpt;
+package com.leonardo.globowhatsapp;
 
 import android.Manifest;
 import android.app.Activity;
@@ -22,28 +22,27 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** Configura varios accesos de burbuja que recuperan ChatGPT oficial de forma estable. */
-public class MainActivity extends Activity {
-    private static final int NOTIFICATION_PERMISSION_REQUEST = 1300;
-    private static final int BACKGROUND = 0xFF050505;
-    private static final int CARD = 0xFF171717;
-    private static final int BORDER = 0xFF343434;
-    private static final int TEXT = 0xFFF5F5F5;
-    private static final int MUTED = 0xFFA3A3A3;
-    private static final int PRIMARY = 0xFF2563EB;
+/** Configura el globo manual y los globos derivados de mensajes de WhatsApp. */
+public final class MainActivity extends Activity {
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 2300;
+    private static final int BACKGROUND = 0xFF050806;
+    private static final int CARD = 0xFF132017;
+    private static final int BORDER = 0xFF294332;
+    private static final int TEXT = 0xFFF3F7F4;
+    private static final int MUTED = 0xFFA8B5AC;
+    private static final int PRIMARY = 0xFF16884C;
 
     private TextView statusView;
     private TextView diagnosticView;
-    private Button activateButton;
-    private Button newChatButton;
+    private Button manualButton;
     private Button messageAccessButton;
-    private boolean pendingCreateNewChat;
+    private boolean pendingManualBubble;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(Color.BLACK);
-        getWindow().setNavigationBarColor(Color.BLACK);
+        getWindow().setStatusBarColor(0xFF07110C);
+        getWindow().setNavigationBarColor(0xFF07110C);
         setContentView(buildUi());
     }
 
@@ -66,24 +65,31 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        TextView orb = text("◎", 36, Color.WHITE, true);
+        TextView orb = text("☎", 34, Color.WHITE, true);
         orb.setGravity(Gravity.CENTER);
-        GradientDrawable orbBackground = new GradientDrawable();
-        orbBackground.setColor(0xFF202020);
+        GradientDrawable orbBackground = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[]{0xFF128C7E, 0xFF25D366}
+        );
         orbBackground.setShape(GradientDrawable.OVAL);
-        orbBackground.setStroke(dp(1), 0xFF505050);
+        orbBackground.setStroke(dp(1), 0xFF70E79B);
         orb.setBackground(orbBackground);
         LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(dp(76), dp(76));
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = text("Globo GPT V13 Adaptada", 27, TEXT, true);
+        TextView title = text("Globo WhatsApp", 27, TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(14), 0, 0);
         root.addView(title, titleParams);
 
-        TextView subtitle = text("Varios accesos estables a ChatGPT en burbujas nativas", 15, MUTED, false);
+        TextView subtitle = text(
+                "Conversaciones de WhatsApp en burbujas nativas",
+                15,
+                MUTED,
+                false
+        );
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = matchWrap();
         subtitleParams.setMargins(0, dp(6), 0, dp(18));
@@ -91,45 +97,38 @@ public class MainActivity extends Activity {
 
         LinearLayout explanation = card();
         explanation.addView(text(
-                "Conserva exactamente el lanzamiento estable de V13 original. Cada botón crea otra burbuja, pero todas recuperan la actividad oficial de ChatGPT para evitar que el chat se minimice o desaparezca.",
+                "Cada mensaje de WhatsApp crea o actualiza el globo de esa conversación. Al tocarlo, se usa el acceso original de WhatsApp para intentar abrir directamente ese chat.",
                 14,
                 TEXT,
                 false
         ), matchWrap());
-        TextView session = text(
-                "Sigue usando ChatGPT oficial: conserva sesión, Plus, historial, voz y actualizaciones. Cuando llega una respuesta, reaparece el último acceso utilizado.",
+        TextView compatibility = text(
+                "WhatsApp permanece instalado sin modificaciones. En Android 11–16, WhatsApp todavía puede decidir abrirse en pantalla completa porque una app externa no controla su modo interno de tareas.",
                 12,
                 MUTED,
                 false
         );
-        LinearLayout.LayoutParams sessionParams = matchWrap();
-        sessionParams.setMargins(0, dp(10), 0, 0);
-        explanation.addView(session, sessionParams);
+        LinearLayout.LayoutParams compatibilityParams = matchWrap();
+        compatibilityParams.setMargins(0, dp(10), 0, 0);
+        explanation.addView(compatibility, compatibilityParams);
         root.addView(explanation, cardParams());
 
         statusView = text("", 14, TEXT, true);
         root.addView(statusView, cardParams());
 
-        activateButton = button(
-                "Abrir o recuperar ChatGPT",
-                true,
-                view -> beginActivation(false)
-        );
-        root.addView(activateButton, buttonParams());
-
-        newChatButton = button(
-                "Crear otro globo",
-                false,
-                view -> beginActivation(true)
-        );
-        root.addView(newChatButton, buttonParams());
-
         messageAccessButton = button(
-                "Permitir aparición al recibir mensajes",
-                false,
-                view -> openNotificationListenerSettings()
+                "Activar globos de mensajes",
+                true,
+                view -> beginMessageAccessActivation()
         );
         root.addView(messageAccessButton, buttonParams());
+
+        manualButton = button(
+                "Crear globo manual",
+                false,
+                view -> beginManualActivation()
+        );
+        root.addView(manualButton, buttonParams());
 
         root.addView(button(
                 "Permitir burbujas en Android",
@@ -143,12 +142,25 @@ public class MainActivity extends Activity {
                 view -> deactivateAllBubbles()
         ), buttonParams());
 
+        LinearLayout privacy = card();
+        privacy.addView(text("Privacidad", 14, TEXT, true), matchWrap());
+        TextView privacyBody = text(
+                "Android mostrará un aviso amplio de acceso a notificaciones. El permiso técnicamente permite ver todas, pero esta APK solo procesa com.whatsapp. No guarda nombres ni mensajes y no tiene permiso de Internet.",
+                12,
+                MUTED,
+                false
+        );
+        LinearLayout.LayoutParams privacyParams = matchWrap();
+        privacyParams.setMargins(0, dp(8), 0, 0);
+        privacy.addView(privacyBody, privacyParams);
+        root.addView(privacy, cardParams());
+
         diagnosticView = text("", 12, 0xFFFCA5A5, false);
         diagnosticView.setVisibility(View.GONE);
         root.addView(diagnosticView, cardParams());
 
         TextView help = text(
-                "Pulsa Crear otro globo para añadir Chat 1, Chat 2, Chat 3, etc. Todos usan el mecanismo estable de V13 original.",
+                "Después de activar el acceso, permite “Todas las conversaciones” en los ajustes de burbujas de Globo WhatsApp.",
                 12,
                 MUTED,
                 false
@@ -158,16 +170,16 @@ public class MainActivity extends Activity {
         return scroll;
     }
 
-    private void beginActivation(boolean createNewChat) {
-        pendingCreateNewChat = createNewChat;
+    private void beginManualActivation() {
+        pendingManualBubble = true;
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             Toast.makeText(this, "Se requiere Android 11 o posterior", Toast.LENGTH_LONG).show();
             return;
         }
-        if (!isOfficialAppInstalled()) {
-            Toast.makeText(this, "ChatGPT oficial no está instalado", Toast.LENGTH_LONG).show();
-            openChatGptStorePage();
+        if (!isWhatsAppInstalled()) {
+            Toast.makeText(this, "WhatsApp oficial no está instalado", Toast.LENGTH_LONG).show();
+            openWhatsAppStorePage();
             return;
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
@@ -180,100 +192,82 @@ public class MainActivity extends Activity {
             return;
         }
 
-        if (createNewChat) {
-            publishNewBubble();
-        } else {
-            publishLastBubble();
-        }
+        publishManualBubble();
     }
 
-    private void publishLastBubble() {
+    private void beginMessageAccessActivation() {
+        pendingManualBubble = false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(
+                    new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                    NOTIFICATION_PERMISSION_REQUEST
+            );
+            return;
+        }
+        openNotificationListenerSettings();
+    }
+
+    private void publishManualBubble() {
         try {
             AppPreferences.clearLastError(this);
-            NativeBubblePublisher.publish(this, true);
-            Toast.makeText(this, "ChatGPT publicado", Toast.LENGTH_SHORT).show();
-            afterPublish();
+            WhatsAppBubblePublisher.publishManual(this, true);
+            Toast.makeText(this, "Globo de WhatsApp creado", Toast.LENGTH_SHORT).show();
+            getWindow().getDecorView().postDelayed(this::updateStatus, 350L);
+            getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 800L);
         } catch (RuntimeException | LinkageError error) {
-            handlePublishError(error);
+            AppPreferences.recordError(this, "No se pudo publicar la burbuja", error);
+            Toast.makeText(this, "Android rechazó la burbuja", Toast.LENGTH_LONG).show();
+            updateStatus();
         }
-    }
-
-    private void publishNewBubble() {
-        try {
-            AppPreferences.clearLastError(this);
-            int sequence = NativeBubblePublisher.publishNewChat(this, true);
-            Toast.makeText(this, "Globo " + sequence + " creado", Toast.LENGTH_SHORT).show();
-            afterPublish();
-        } catch (RuntimeException | LinkageError error) {
-            handlePublishError(error);
-        }
-    }
-
-    private void afterPublish() {
-        getWindow().getDecorView().postDelayed(this::updateStatus, 450);
-        getWindow().getDecorView().postDelayed(() -> moveTaskToBack(true), 900);
-    }
-
-    private void handlePublishError(Throwable error) {
-        AppPreferences.recordError(this, "No se pudo publicar la burbuja", error);
-        Toast.makeText(this, "Android rechazó la burbuja", Toast.LENGTH_LONG).show();
-        updateStatus();
     }
 
     private void deactivateAllBubbles() {
-        NativeBubblePublisher.cancel(this);
+        WhatsAppBubblePublisher.cancelAll(this);
         Toast.makeText(this, "Todos los globos fueron eliminados", Toast.LENGTH_SHORT).show();
-        getWindow().getDecorView().postDelayed(this::updateStatus, 180);
+        getWindow().getDecorView().postDelayed(this::updateStatus, 180L);
     }
 
     private void updateStatus() {
-        if (statusView == null
-                || activateButton == null
-                || newChatButton == null
-                || messageAccessButton == null) {
-            return;
-        }
+        if (statusView == null || manualButton == null || messageAccessButton == null) return;
 
         boolean listenerEnabled = isNotificationListenerEnabled();
-        int activeChats = NativeBubblePublisher.getActiveChatCount(this);
+        int activeBubbles = WhatsAppBubblePublisher.getActiveBubbleCount(this);
 
         messageAccessButton.setText(listenerEnabled
-                ? "Aparición al recibir mensajes: activada"
-                : "Permitir aparición al recibir mensajes");
+                ? "Globos de mensajes: activados"
+                : "Activar globos de mensajes");
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             statusView.setText("Estado: Android no admite estas burbujas nativas");
             statusView.setTextColor(0xFFFCA5A5);
-            activateButton.setEnabled(false);
-            newChatButton.setEnabled(false);
-        } else if (!isOfficialAppInstalled()) {
-            statusView.setText("Estado: falta instalar ChatGPT oficial");
+            manualButton.setEnabled(false);
+            messageAccessButton.setEnabled(false);
+        } else if (!isWhatsAppInstalled()) {
+            statusView.setText("Estado: falta instalar WhatsApp oficial");
             statusView.setTextColor(0xFFFCA5A5);
-            activateButton.setText("Instalar ChatGPT oficial");
-            activateButton.setEnabled(true);
-            newChatButton.setEnabled(false);
+            manualButton.setText("Instalar WhatsApp oficial");
+            manualButton.setEnabled(true);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                 != PackageManager.PERMISSION_GRANTED) {
             statusView.setText("Estado: falta permitir notificaciones");
             statusView.setTextColor(0xFFFBBF24);
-            activateButton.setText("Permitir y abrir ChatGPT");
-            activateButton.setEnabled(true);
-            newChatButton.setEnabled(true);
+            manualButton.setText("Permitir y crear globo manual");
+            manualButton.setEnabled(true);
         } else {
-            String chatLabel = activeChats == 1
+            String bubbleLabel = activeBubbles == 1
                     ? "1 globo publicado"
-                    : activeChats + " globos publicados";
+                    : activeBubbles + " globos publicados";
             String listenerLabel = listenerEnabled
-                    ? "aparición por mensajes activa"
+                    ? "mensajes automáticos activos"
                     : "falta acceso a mensajes";
-            statusView.setText("Estado: " + chatLabel + " · " + listenerLabel);
+            statusView.setText("Estado: " + bubbleLabel + " · " + listenerLabel);
             statusView.setTextColor(listenerEnabled ? 0xFF34D399 : 0xFFFBBF24);
-            activateButton.setText(activeChats > 0
-                    ? "Abrir o recuperar ChatGPT"
-                    : "Activar primer globo");
-            activateButton.setEnabled(true);
-            newChatButton.setEnabled(true);
+            manualButton.setText("Crear globo manual");
+            manualButton.setEnabled(true);
+            messageAccessButton.setEnabled(true);
         }
 
         String diagnostic = AppPreferences.getLastError(this);
@@ -292,7 +286,7 @@ public class MainActivity extends Activity {
         );
         ComponentName component = new ComponentName(
                 this,
-                ChatGptNotificationListenerService.class
+                WhatsAppNotificationListenerService.class
         );
         return enabled != null && enabled.contains(component.flattenToString());
     }
@@ -301,10 +295,7 @@ public class MainActivity extends Activity {
         try {
             startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
         } catch (ActivityNotFoundException error) {
-            startActivity(new Intent(
-                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                    Uri.parse("package:" + getPackageName())
-            ));
+            openApplicationDetails();
         }
     }
 
@@ -319,31 +310,35 @@ public class MainActivity extends Activity {
                         .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName());
                 startActivity(notifications);
             } catch (ActivityNotFoundException ignored) {
-                startActivity(new Intent(
-                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        Uri.parse("package:" + getPackageName())
-                ));
+                openApplicationDetails();
             }
         }
     }
 
-    private boolean isOfficialAppInstalled() {
+    private void openApplicationDetails() {
+        startActivity(new Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + getPackageName())
+        ));
+    }
+
+    private boolean isWhatsAppInstalled() {
         return getPackageManager().getLaunchIntentForPackage(
-                NativeBubblePublisher.CHATGPT_PACKAGE
+                WhatsAppBubblePublisher.WHATSAPP_PACKAGE
         ) != null;
     }
 
-    private void openChatGptStorePage() {
+    private void openWhatsAppStorePage() {
         try {
             startActivity(new Intent(
                     Intent.ACTION_VIEW,
-                    Uri.parse("market://details?id=" + NativeBubblePublisher.CHATGPT_PACKAGE)
+                    Uri.parse("market://details?id=" + WhatsAppBubblePublisher.WHATSAPP_PACKAGE)
             ));
         } catch (ActivityNotFoundException ignored) {
             startActivity(new Intent(
                     Intent.ACTION_VIEW,
                     Uri.parse("https://play.google.com/store/apps/details?id="
-                            + NativeBubblePublisher.CHATGPT_PACKAGE)
+                            + WhatsAppBubblePublisher.WHATSAPP_PACKAGE)
             ));
         }
     }
@@ -353,11 +348,8 @@ public class MainActivity extends Activity {
         super.onRequestPermissionsResult(requestCode, permissions, results);
         if (requestCode != NOTIFICATION_PERMISSION_REQUEST) return;
         if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
-            if (pendingCreateNewChat) {
-                publishNewBubble();
-            } else {
-                publishLastBubble();
-            }
+            if (pendingManualBubble) publishManualBubble();
+            else openNotificationListenerSettings();
         } else {
             Toast.makeText(
                     this,
@@ -366,6 +358,7 @@ public class MainActivity extends Activity {
             ).show();
             updateStatus();
         }
+        pendingManualBubble = false;
     }
 
     private LinearLayout card() {
@@ -399,7 +392,7 @@ public class MainActivity extends Activity {
         button.setGravity(Gravity.CENTER);
         button.setOnClickListener(listener);
         GradientDrawable background = new GradientDrawable();
-        background.setColor(primary ? PRIMARY : 0xFF262626);
+        background.setColor(primary ? PRIMARY : 0xFF1B2A20);
         background.setCornerRadius(dp(14));
         background.setStroke(dp(1), primary ? PRIMARY : BORDER);
         button.setBackground(background);

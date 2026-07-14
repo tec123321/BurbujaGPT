@@ -1,28 +1,31 @@
-# Globo GPT V13
+# Globo WhatsApp V1
 
-Aplicación Android que publica una conversación compatible con las burbujas nativas del sistema y abre la actividad de la aplicación oficial de ChatGPT desde la tarea de esa burbuja.
+Aplicación Android independiente que convierte las notificaciones de la aplicación oficial de WhatsApp en conversaciones compatibles con las burbujas nativas del sistema.
 
-## Qué cambió
+## Comportamiento
 
-- Eliminado por completo el WebView.
-- Eliminados Shizuku, la superposición y el modo de ventana libre/emergente.
-- Eliminados los permisos de Internet, micrófono y “Aparecer encima”.
-- La burbuja se crea con `Notification.BubbleMetadata`, un acceso directo de conversación persistente y una actividad `allowEmbedded`/redimensionable.
-- Al expandirla, la actividad anfitriona inicia `com.openai.chatgpt` sin `NEW_TASK`, para conservarla dentro de la tarea de la burbuja.
-- La APK oficial no se modifica: mantiene su firma, sesión, Google Login, Plus, historial, voz y actualizaciones.
+- Un botón crea un globo manual para abrir WhatsApp.
+- Con acceso a notificaciones, cada conversación entrante crea o actualiza su propio globo.
+- Al tocar un globo de mensaje, se reutiliza el `PendingIntent` original emitido por WhatsApp para intentar abrir esa conversación concreta.
+- La aplicación oficial `com.whatsapp` permanece intacta, con su firma, sesión, historial, llamadas y actualizaciones.
+- No usa WebView, Shizuku, superposición, Accesibilidad, Internet ni almacenamiento externo.
+
+## Privacidad
+
+Android concede al servicio acceso técnico a todas las notificaciones. El servicio filtra por código antes de procesarlas y solo acepta `com.whatsapp`. No guarda nombres ni mensajes, no los registra y la APK no solicita permiso de Internet. El texto visible se duplica únicamente en la notificación local que Android usa como burbuja.
 
 ## Uso
 
-1. Instala ChatGPT oficial y **Globo GPT V13**.
-2. Abre Globo GPT y pulsa **Activar burbuja nativa**.
-3. Permite las notificaciones.
-4. Si One UI deja la conversación como notificación, pulsa **Permitir burbujas en Android** y habilita las burbujas para Globo GPT.
-5. Toca el icono de burbuja de la conversación “ChatGPT”.
+1. Instala WhatsApp oficial y **Globo WhatsApp**.
+2. Abre Globo WhatsApp y permite sus notificaciones.
+3. Pulsa **Activar globos de mensajes** y habilita `Globo WhatsApp: mensajes`.
+4. Pulsa **Permitir burbujas en Android** y permite todas las conversaciones.
+5. Usa **Crear globo manual** si quieres abrir WhatsApp sin esperar un mensaje.
 
-## Compatibilidad
+## Límite de Android
 
-Requiere Android 11 o posterior. En Android 11–16 el sistema solo garantiza el contenedor de burbuja para la actividad anfitriona; que una actividad de otro paquete permanezca en esa misma tarea depende de su modo de lanzamiento y de la implementación del fabricante. Android 17 incorpora oficialmente la posibilidad de añadir aplicaciones completas a la interfaz de burbujas.
+En Android 11–16, el sistema solo garantiza que la actividad anfitriona permanezca dentro de la burbuja. WhatsApp puede reutilizar una tarea existente y abrir la conversación en pantalla completa. El código intenta conservar la tarea de la burbuja, pero una app externa no puede imponer ese comportamiento a WhatsApp mediante API públicas.
 
 ## Compilar
 
-En GitHub: **Actions > Build APK > Run workflow**. El artefacto se publica como `Globo-GPT-V13-native-app-bubble`.
+Ejecuta `gradle assembleDebug` con JDK 17 y Android SDK 35. El workflow **Build APK** también compila, verifica la firma y publica `Globo-WhatsApp-V1.apk`.

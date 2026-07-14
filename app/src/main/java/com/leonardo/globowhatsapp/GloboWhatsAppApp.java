@@ -1,12 +1,12 @@
-package com.leonardo.burbujagpt;
+package com.leonardo.globowhatsapp;
 
 import android.app.Application;
 import android.app.UiModeManager;
 import android.os.Build;
 import android.os.Process;
 
-/** Mantiene el tema oscuro y conserva un diagnóstico local si falla la burbuja. */
-public class BurbujaGptApp extends Application {
+/** Mantiene el tema oscuro y conserva un diagnóstico local si falla una burbuja. */
+public final class GloboWhatsAppApp extends Application {
     @Override
     public void onCreate() {
         super.onCreate();

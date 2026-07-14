@@ -1,10 +1,11 @@
-package com.leonardo.burbujagpt;
+package com.leonardo.globowhatsapp;
 
 import android.content.Context;
 import android.util.Log;
 
+/** Conserva únicamente diagnósticos técnicos locales; nunca guarda mensajes de WhatsApp. */
 final class AppPreferences {
-    private static final String PREFS = "globo_gpt_native_state";
+    private static final String PREFS = "globo_whatsapp_native_state";
     private static final String KEY_LAST_ERROR = "last_error";
 
     private AppPreferences() {

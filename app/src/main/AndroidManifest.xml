@@ -2,11 +2,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
-        <package android:name="com.openai.chatgpt" />
+        <package android:name="com.whatsapp" />
     </queries>
 
     <application
-        android:name=".BurbujaGptApp"
+        android:name=".GloboWhatsAppApp"
         android:allowBackup="false"
         android:hardwareAccelerated="true"
         android:icon="@drawable/ic_bubble"
@@ -32,16 +32,16 @@
             android:documentLaunchMode="always"
             android:excludeFromRecents="true"
             android:exported="false"
-            android:label="ChatGPT"
+            android:label="WhatsApp"
             android:launchMode="standard"
             android:resizeableActivity="true"
-            android:taskAffinity="com.leonardo.burbujagpt.nativebubble"
+            android:taskAffinity="com.leonardo.globowhatsapp.nativebubble"
             android:theme="@style/NativeBubbleTheme" />
 
         <service
-            android:name=".ChatGptNotificationListenerService"
+            android:name=".WhatsAppNotificationListenerService"
             android:exported="true"
-            android:label="Globo GPT"
+            android:label="Globo WhatsApp: mensajes"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />

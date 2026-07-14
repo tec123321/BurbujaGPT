@@ -3,15 +3,15 @@ plugins {
 }
 
 android {
-    namespace 'com.leonardo.burbujagpt'
+    namespace 'com.leonardo.globowhatsapp'
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.leonardo.burbujagpt'
-        minSdk 24
+        applicationId 'com.leonardo.globowhatsapp'
+        minSdk 30
         targetSdk 35
-        versionCode 17
-        versionName '1.3.4-adaptada-multichat-anti-collapse'
+        versionCode 1
+        versionName '1.0.0'
     }
 
     compileOptions {

@@ -1,8 +1,10 @@
-package com.leonardo.burbujagpt;
+package com.leonardo.globowhatsapp;
 
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.IntentSender;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -16,13 +18,14 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 /**
- * Actividad anfitriona que Android coloca en la burbuja. Desde esa misma tarea
- * inicia la actividad oficial instalada, sin WebView ni modo de ventana libre.
+ * Actividad anfitriona que Android coloca en la burbuja. Intenta iniciar el
+ * PendingIntent original de WhatsApp desde esa misma tarea y usa la app general como respaldo.
  */
-public class NativeBubbleActivity extends Activity {
+public final class NativeBubbleActivity extends Activity {
     private static final String STATE_ATTEMPTED = "attempted";
 
     private LinearLayout root;
+    private TextView titleView;
     private TextView status;
     private ProgressBar progress;
     private boolean attempted;
@@ -30,12 +33,13 @@ public class NativeBubbleActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(0xFF09090B);
-        getWindow().setNavigationBarColor(0xFF09090B);
+        getWindow().setStatusBarColor(0xFF07110C);
+        getWindow().setNavigationBarColor(0xFF07110C);
         setContentView(buildUi());
 
         attempted = savedInstanceState != null && savedInstanceState.getBoolean(STATE_ATTEMPTED);
-        if (!attempted) root.postDelayed(this::launchOfficialInsideBubble, 120);
+        updateConversationTitle();
+        if (!attempted) root.postDelayed(this::launchWhatsAppInsideBubble, 100L);
     }
 
     @Override
@@ -43,8 +47,9 @@ public class NativeBubbleActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         attempted = false;
-        showLoading("Abriendo ChatGPT…");
-        root.postDelayed(this::launchOfficialInsideBubble, 80);
+        updateConversationTitle();
+        showLoading("Abriendo la conversación…");
+        root.postDelayed(this::launchWhatsAppInsideBubble, 70L);
     }
 
     @Override
@@ -53,15 +58,34 @@ public class NativeBubbleActivity extends Activity {
         super.onSaveInstanceState(state);
     }
 
-    private void launchOfficialInsideBubble() {
+    private void launchWhatsAppInsideBubble() {
         if (attempted || isFinishing()) return;
         attempted = true;
 
+        PendingIntent conversation = WhatsAppBubblePublisher.getTargetPendingIntent(getIntent());
+        if (conversation != null) {
+            try {
+                startIntentSender(conversation.getIntentSender(), null, 0, 0, 0);
+                overridePendingTransition(0, 0);
+                AppPreferences.clearLastError(this);
+                status.setText("Conversación abierta con WhatsApp oficial.");
+                return;
+            } catch (IntentSender.SendIntentException
+                     | SecurityException
+                     | IllegalArgumentException error) {
+                AppPreferences.recordError(
+                        this,
+                        "El acceso a la conversación dejó de ser válido",
+                        error
+                );
+            }
+        }
+
         Intent launcher = getPackageManager().getLaunchIntentForPackage(
-                NativeBubblePublisher.CHATGPT_PACKAGE
+                WhatsAppBubblePublisher.WHATSAPP_PACKAGE
         );
         if (launcher == null || launcher.getComponent() == null) {
-            showError("ChatGPT oficial no está instalado o Android no permite localizarlo.");
+            showError("WhatsApp oficial no está instalado o Android no permite localizarlo.");
             return;
         }
 
@@ -72,10 +96,10 @@ public class NativeBubbleActivity extends Activity {
             startActivity(target);
             overridePendingTransition(0, 0);
             AppPreferences.clearLastError(this);
-            status.setText("ChatGPT se abrió dentro de la tarea de la burbuja.");
+            status.setText("WhatsApp se abrió desde la tarea de la burbuja.");
         } catch (ActivityNotFoundException | SecurityException | IllegalArgumentException error) {
-            AppPreferences.recordError(this, "Android rechazó abrir ChatGPT en la burbuja", error);
-            showError("Android rechazó insertar la actividad oficial en esta burbuja.");
+            AppPreferences.recordError(this, "Android rechazó abrir WhatsApp", error);
+            showError("Android rechazó abrir WhatsApp desde esta burbuja.");
         }
     }
 
@@ -84,13 +108,13 @@ public class NativeBubbleActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(dp(24), dp(28), dp(24), dp(28));
-        root.setBackgroundColor(0xFF111113);
+        root.setBackgroundColor(0xFF101A14);
 
-        TextView icon = text("✦", 34, Color.WHITE, true);
+        TextView icon = text("☎", 33, Color.WHITE, true);
         icon.setGravity(Gravity.CENTER);
         GradientDrawable iconBackground = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF7C3AED, 0xFF0EA5E9, 0xFF10B981}
+                new int[]{0xFF128C7E, 0xFF25D366}
         );
         iconBackground.setShape(GradientDrawable.OVAL);
         icon.setBackground(iconBackground);
@@ -98,13 +122,13 @@ public class NativeBubbleActivity extends Activity {
         iconParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(icon, iconParams);
 
-        TextView title = text("ChatGPT", 22, 0xFFF5F5F5, true);
-        title.setGravity(Gravity.CENTER);
+        titleView = text("WhatsApp", 22, 0xFFF5F5F5, true);
+        titleView.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(16), 0, dp(8));
-        root.addView(title, titleParams);
+        root.addView(titleView, titleParams);
 
-        status = text("Abriendo la aplicación oficial…", 14, 0xFFB4B4B8, false);
+        status = text("Abriendo la aplicación oficial…", 14, 0xFFB9C6BE, false);
         status.setGravity(Gravity.CENTER);
         root.addView(status, matchWrap());
 
@@ -113,13 +137,18 @@ public class NativeBubbleActivity extends Activity {
         progressParams.gravity = Gravity.CENTER_HORIZONTAL;
         progressParams.setMargins(0, dp(18), 0, 0);
         root.addView(progress, progressParams);
-
         return root;
+    }
+
+    private void updateConversationTitle() {
+        if (titleView != null) {
+            titleView.setText(WhatsAppBubblePublisher.getConversationTitle(getIntent()));
+        }
     }
 
     private void showLoading(String message) {
         status.setText(message);
-        status.setTextColor(0xFFB4B4B8);
+        status.setTextColor(0xFFB9C6BE);
         progress.setVisibility(View.VISIBLE);
         removeActionButtons();
     }
@@ -133,7 +162,7 @@ public class NativeBubbleActivity extends Activity {
         Button retry = button("Reintentar", view -> {
             attempted = false;
             showLoading("Reintentando…");
-            root.postDelayed(this::launchOfficialInsideBubble, 100);
+            root.postDelayed(this::launchWhatsAppInsideBubble, 90L);
         });
         retry.setTag("bubble_action");
         LinearLayout.LayoutParams retryParams = new LinearLayout.LayoutParams(
@@ -143,7 +172,7 @@ public class NativeBubbleActivity extends Activity {
         retryParams.setMargins(0, dp(20), 0, 0);
         root.addView(retry, retryParams);
 
-        Button settings = button("Volver a Globo GPT", view -> {
+        Button settings = button("Volver a Globo WhatsApp", view -> {
             startActivity(new Intent(this, MainActivity.class));
             finish();
         });
@@ -182,9 +211,9 @@ public class NativeBubbleActivity extends Activity {
         button.setTextSize(14);
         button.setOnClickListener(listener);
         GradientDrawable background = new GradientDrawable();
-        background.setColor(0xFF27272A);
+        background.setColor(0xFF1E3928);
         background.setCornerRadius(dp(14));
-        background.setStroke(dp(1), 0xFF3F3F46);
+        background.setStroke(dp(1), 0xFF31553D);
         button.setBackground(background);
         return button;
     }
