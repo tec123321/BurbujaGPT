@@ -19,14 +19,14 @@ import android.service.notification.StatusBarNotification;
 import java.util.Arrays;
 import java.util.Collections;
 
-/** Publica una conversación real de Android cuyo contenido abre ChatGPT instalado. */
+/** Publica una conversación Android cuyo contenido anfitrión abre WhatsApp oficial. */
 final class NativeBubblePublisher {
-    static final String CHATGPT_PACKAGE = "com.openai.chatgpt";
+    static final String WHATSAPP_PACKAGE = "com.whatsapp";
 
-    private static final String CHANNEL_ID = "chatgpt_native_bubble_v13";
-    private static final String SHORTCUT_ID = "chatgpt_native_conversation_v13";
-    private static final String CATEGORY = "com.leonardo.burbujagpt.category.NATIVE_CHAT";
-    private static final int NOTIFICATION_ID = 1301;
+    private static final String CHANNEL_ID = "whatsapp_native_bubble_v30";
+    private static final String SHORTCUT_ID = "whatsapp_native_conversation_v30";
+    private static final String CATEGORY = "com.leonardo.globowhatsapp.category.NATIVE_CHAT";
+    private static final int NOTIFICATION_ID = 3001;
 
     private NativeBubblePublisher() {
     }
@@ -44,7 +44,7 @@ final class NativeBubblePublisher {
 
         ensureChannel(notifications);
         Person assistant = new Person.Builder()
-                .setName("ChatGPT")
+                .setName("WhatsApp")
                 .setImportant(true)
                 .build();
         publishShortcut(context, shortcuts, assistant);
@@ -55,7 +55,7 @@ final class NativeBubblePublisher {
                 : 0;
         PendingIntent bubbleIntentToken = PendingIntent.getActivity(
                 context,
-                1303,
+                3003,
                 bubbleIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | mutableFlag
         );
@@ -64,15 +64,19 @@ final class NativeBubblePublisher {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent contentIntent = PendingIntent.getActivity(
                 context,
-                1302,
+                3002,
                 settingsIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
         Person user = new Person.Builder().setName("Tú").build();
         Notification.MessagingStyle style = new Notification.MessagingStyle(user)
-                .setConversationTitle("ChatGPT")
-                .addMessage("Toca la burbuja para abrir la aplicación oficial", System.currentTimeMillis(), assistant);
+                .setConversationTitle("WhatsApp")
+                .addMessage(
+                        "Toca la burbuja para abrir la aplicación oficial",
+                        System.currentTimeMillis(),
+                        assistant
+                );
 
         Notification.BubbleMetadata bubble = new Notification.BubbleMetadata.Builder(
                 bubbleIntentToken,
@@ -85,7 +89,7 @@ final class NativeBubblePublisher {
 
         Notification notification = new Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_bubble)
-                .setContentTitle("ChatGPT")
+                .setContentTitle("WhatsApp")
                 .setContentText("Aplicación oficial dentro de una burbuja Android")
                 .setContentIntent(contentIntent)
                 .setStyle(style)
@@ -105,10 +109,10 @@ final class NativeBubblePublisher {
     private static void ensureChannel(NotificationManager notifications) {
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
-                "ChatGPT en burbuja",
+                "WhatsApp en burbuja",
                 NotificationManager.IMPORTANCE_DEFAULT
         );
-        channel.setDescription("Conversación nativa que abre la aplicación oficial de ChatGPT");
+        channel.setDescription("Conversación nativa que abre la aplicación oficial de WhatsApp");
         channel.setShowBadge(true);
         channel.setSound(null, null);
         channel.enableVibration(false);
@@ -124,8 +128,8 @@ final class NativeBubblePublisher {
         Intent bubbleIntent = createBubbleIntent(context);
 
         ShortcutInfo shortcut = new ShortcutInfo.Builder(context, SHORTCUT_ID)
-                .setShortLabel("ChatGPT")
-                .setLongLabel("ChatGPT en burbuja")
+                .setShortLabel("WhatsApp")
+                .setLongLabel("WhatsApp en burbuja")
                 .setIcon(Icon.createWithResource(context, R.drawable.ic_bubble))
                 .setCategories(Collections.singleton(CATEGORY))
                 .setActivity(new ComponentName(context, MainActivity.class))
@@ -135,8 +139,9 @@ final class NativeBubblePublisher {
                 .build();
 
         shortcuts.removeDynamicShortcuts(Arrays.asList(
-                "native_chatgpt_conversation",
-                "native_chatgpt_conversation_v2"
+                "whatsapp_native_conversation",
+                "whatsapp_native_conversation_v2",
+                "whatsapp_native_conversation_v3"
         ));
         shortcuts.pushDynamicShortcut(shortcut);
     }
@@ -144,7 +149,7 @@ final class NativeBubblePublisher {
     private static Intent createBubbleIntent(Context context) {
         return new Intent(context, NativeBubbleActivity.class)
                 .setAction(Intent.ACTION_VIEW)
-                .setData(Uri.parse("burbujagpt://conversation/chatgpt"))
+                .setData(Uri.parse("globowhatsapp://conversation/main"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
     }
 
@@ -154,7 +159,9 @@ final class NativeBubblePublisher {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             ShortcutManager shortcuts = context.getSystemService(ShortcutManager.class);
-            if (shortcuts != null) shortcuts.removeDynamicShortcuts(Collections.singletonList(SHORTCUT_ID));
+            if (shortcuts != null) {
+                shortcuts.removeDynamicShortcuts(Collections.singletonList(SHORTCUT_ID));
+            }
         }
     }
 
@@ -174,7 +181,8 @@ final class NativeBubblePublisher {
         if (notifications == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null;
         try {
             for (StatusBarNotification item : notifications.getActiveNotifications()) {
-                if (item.getId() == NOTIFICATION_ID && context.getPackageName().equals(item.getPackageName())) {
+                if (item.getId() == NOTIFICATION_ID
+                        && context.getPackageName().equals(item.getPackageName())) {
                     return item;
                 }
             }
