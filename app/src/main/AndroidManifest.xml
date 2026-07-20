@@ -37,18 +37,5 @@
             android:resizeableActivity="true"
             android:taskAffinity="com.leonardo.globowhatsapp.nativebubble.task"
             android:theme="@style/NativeBubbleTheme" />
-
-        <service
-            android:name=".WhatsAppNotificationCaptureService"
-            android:exported="true"
-            android:label="Captura de chats de WhatsApp"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.service.notification.default_filter_types"
-                android:value="conversations|alerting" />
-        </service>
     </application>
 </manifest>
