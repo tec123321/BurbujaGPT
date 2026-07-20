@@ -32,14 +32,22 @@ jobs:
           cat build.log
           exit $status
 
-      - name: Verify APK
+      - name: Verify APK, signature and permissions
         if: success()
         shell: bash
         run: |
           set -euo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
           test -s "$APK"
           unzip -t "$APK" > zip-verification.txt
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee signature-verification.txt
+          "$BUILD_TOOLS/aapt" dump permissions "$APK" | tee permissions.txt
+          if grep -Eq 'android.permission.(INTERNET|SYSTEM_ALERT_WINDOW|BIND_ACCESSIBILITY_SERVICE|RECORD_AUDIO|READ_CONTACTS|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE)' permissions.txt; then
+            echo "Se detectó un permiso prohibido" >&2
+            exit 1
+          fi
+          "$BUILD_TOOLS/zipalign" -c -v 4 "$APK" > zipalign-verification.txt
           sha256sum "$APK" > SHA256SUMS.txt
 
       - name: Upload build log
@@ -53,9 +61,12 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Globo-WhatsApp-V3-native-no-Shizuku
+          name: Globo-WhatsApp-V3-native-no-Shizuku-verified
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             SHA256SUMS.txt
             zip-verification.txt
+            signature-verification.txt
+            permissions.txt
+            zipalign-verification.txt
           retention-days: 30
