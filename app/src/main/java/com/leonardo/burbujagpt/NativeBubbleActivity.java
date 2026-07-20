@@ -16,8 +16,9 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 
 /**
- * Actividad anfitriona que Android coloca en la burbuja. Desde esa misma tarea
- * inicia la actividad oficial instalada, sin WebView ni modo de ventana libre.
+ * Actividad anfitriona que Android coloca en la burbuja. Reproduce el mismo
+ * patrón de Globo GPT V13 y, desde esa tarea, inicia WhatsApp oficial sin
+ * FLAG_ACTIVITY_NEW_TASK, WebView, Shizuku ni superposición.
  */
 public class NativeBubbleActivity extends Activity {
     private static final String STATE_ATTEMPTED = "attempted";
@@ -30,8 +31,8 @@ public class NativeBubbleActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setStatusBarColor(0xFF09090B);
-        getWindow().setNavigationBarColor(0xFF09090B);
+        getWindow().setStatusBarColor(0xFF071A10);
+        getWindow().setNavigationBarColor(0xFF071A10);
         setContentView(buildUi());
 
         attempted = savedInstanceState != null && savedInstanceState.getBoolean(STATE_ATTEMPTED);
@@ -43,7 +44,7 @@ public class NativeBubbleActivity extends Activity {
         super.onNewIntent(intent);
         setIntent(intent);
         attempted = false;
-        showLoading("Abriendo ChatGPT…");
+        showLoading("Abriendo WhatsApp…");
         root.postDelayed(this::launchOfficialInsideBubble, 80);
     }
 
@@ -58,23 +59,25 @@ public class NativeBubbleActivity extends Activity {
         attempted = true;
 
         Intent launcher = getPackageManager().getLaunchIntentForPackage(
-                NativeBubblePublisher.CHATGPT_PACKAGE
+                NativeBubblePublisher.WHATSAPP_PACKAGE
         );
         if (launcher == null || launcher.getComponent() == null) {
-            showError("ChatGPT oficial no está instalado o Android no permite localizarlo.");
+            showError("WhatsApp oficial no está instalado o Android no permite localizarlo.");
             return;
         }
 
         Intent target = new Intent(launcher);
+        // setFlags reemplaza el NEW_TASK que suele traer el intent launcher.
+        // Son exactamente las banderas usadas por Globo GPT V13.
         target.setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_NO_ANIMATION);
 
         try {
             startActivity(target);
             overridePendingTransition(0, 0);
             AppPreferences.clearLastError(this);
-            status.setText("ChatGPT se abrió dentro de la tarea de la burbuja.");
+            status.setText("WhatsApp se inició desde la tarea de la burbuja.");
         } catch (ActivityNotFoundException | SecurityException | IllegalArgumentException error) {
-            AppPreferences.recordError(this, "Android rechazó abrir ChatGPT en la burbuja", error);
+            AppPreferences.recordError(this, "Android rechazó abrir WhatsApp en la burbuja", error);
             showError("Android rechazó insertar la actividad oficial en esta burbuja.");
         }
     }
@@ -84,21 +87,19 @@ public class NativeBubbleActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(dp(24), dp(28), dp(24), dp(28));
-        root.setBackgroundColor(0xFF111113);
+        root.setBackgroundColor(0xFF0B1510);
 
-        TextView icon = text("✦", 34, Color.WHITE, true);
+        TextView icon = text("☎", 32, Color.WHITE, true);
         icon.setGravity(Gravity.CENTER);
-        GradientDrawable iconBackground = new GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF7C3AED, 0xFF0EA5E9, 0xFF10B981}
-        );
+        GradientDrawable iconBackground = new GradientDrawable();
+        iconBackground.setColor(0xFF25D366);
         iconBackground.setShape(GradientDrawable.OVAL);
         icon.setBackground(iconBackground);
         LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(68), dp(68));
         iconParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(icon, iconParams);
 
-        TextView title = text("ChatGPT", 22, 0xFFF5F5F5, true);
+        TextView title = text("WhatsApp", 22, 0xFFF5F5F5, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(16), 0, dp(8));
@@ -143,7 +144,7 @@ public class NativeBubbleActivity extends Activity {
         retryParams.setMargins(0, dp(20), 0, 0);
         root.addView(retry, retryParams);
 
-        Button settings = button("Volver a Globo GPT", view -> {
+        Button settings = button("Volver a Globo WhatsApp", view -> {
             startActivity(new Intent(this, MainActivity.class));
             finish();
         });
@@ -182,9 +183,9 @@ public class NativeBubbleActivity extends Activity {
         button.setTextSize(14);
         button.setOnClickListener(listener);
         GradientDrawable background = new GradientDrawable();
-        background.setColor(0xFF27272A);
+        background.setColor(0xFF1F3A2A);
         background.setCornerRadius(dp(14));
-        background.setStroke(dp(1), 0xFF3F3F46);
+        background.setStroke(dp(1), 0xFF315B43);
         button.setBackground(background);
         return button;
     }
