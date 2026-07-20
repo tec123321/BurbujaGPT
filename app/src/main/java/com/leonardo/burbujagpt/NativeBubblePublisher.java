@@ -12,20 +12,21 @@ import android.content.LocusId;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.drawable.Icon;
+import android.net.Uri;
 import android.os.Build;
 import android.service.notification.StatusBarNotification;
 
 import java.util.Arrays;
 import java.util.Collections;
 
-/** Publica una burbuja cuyo contenido es el PendingIntent real de un chat de WhatsApp. */
+/** Publica una burbuja que inicia una pila atómica: anfitrión y WhatsApp encima. */
 final class NativeBubblePublisher {
     static final String WHATSAPP_PACKAGE = "com.whatsapp";
 
-    private static final String CHANNEL_ID = "whatsapp_captured_bubble_v32";
-    private static final String SHORTCUT_ID = "whatsapp_captured_conversation_v32";
-    private static final String CATEGORY = "com.leonardo.globowhatsapp.category.CAPTURED_CHAT";
-    private static final int NOTIFICATION_ID = 3201;
+    private static final String CHANNEL_ID = "whatsapp_atomic_stack_v33";
+    private static final String SHORTCUT_ID = "whatsapp_atomic_stack_v33";
+    private static final String CATEGORY = "com.leonardo.globowhatsapp.category.ATOMIC_STACK";
+    private static final int NOTIFICATION_ID = 3301;
 
     private NativeBubblePublisher() {
     }
@@ -35,50 +36,60 @@ final class NativeBubblePublisher {
             throw new IllegalStateException("Las burbujas nativas requieren Android 11 o posterior");
         }
 
-        PendingIntent whatsappChat = WhatsAppNotificationCaptureService.getLatestContentIntent();
-        if (whatsappChat == null) {
-            throw new IllegalStateException(
-                    "No hay una notificación activa de WhatsApp con un chat capturado"
-            );
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !whatsappChat.isActivity()) {
-            throw new IllegalStateException("La notificación de WhatsApp no contiene una actividad");
+        Intent installedLauncher = context.getPackageManager()
+                .getLaunchIntentForPackage(WHATSAPP_PACKAGE);
+        if (installedLauncher == null || installedLauncher.getComponent() == null) {
+            throw new IllegalStateException("No se encontró la actividad principal de WhatsApp");
         }
 
         NotificationManager notifications = context.getSystemService(NotificationManager.class);
         ShortcutManager shortcuts = context.getSystemService(ShortcutManager.class);
         if (notifications == null || shortcuts == null) {
-            throw new IllegalStateException("Android no expuso el servicio de burbujas");
+            throw new IllegalStateException("Android no expuso los servicios de burbujas");
         }
 
+        clearOldVersions(notifications, shortcuts);
         ensureChannel(notifications);
-        String conversationName = WhatsAppNotificationCaptureService.getLatestConversationTitle();
-        Person contact = new Person.Builder()
-                .setName(conversationName)
+
+        Person whatsapp = new Person.Builder()
+                .setName("WhatsApp")
                 .setImportant(true)
                 .build();
-        publishShortcut(context, shortcuts, contact);
+        publishShortcut(context, shortcuts, whatsapp);
+
+        Intent host = createHostIntent(context);
+        Intent target = createWhatsAppIntent(installedLauncher.getComponent());
+        int mutableFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                ? PendingIntent.FLAG_MUTABLE
+                : 0;
+
+        PendingIntent bubbleStack = PendingIntent.getActivities(
+                context,
+                3303,
+                new Intent[]{host, target},
+                PendingIntent.FLAG_UPDATE_CURRENT | mutableFlag
+        );
 
         Intent settingsIntent = new Intent(context, MainActivity.class)
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent contentIntent = PendingIntent.getActivity(
                 context,
-                3202,
+                3302,
                 settingsIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
         Person user = new Person.Builder().setName("Tú").build();
         Notification.MessagingStyle style = new Notification.MessagingStyle(user)
-                .setConversationTitle(conversationName)
+                .setConversationTitle("WhatsApp")
                 .addMessage(
-                        "Toca la burbuja para abrir este chat con el PendingIntent original de WhatsApp",
+                        "Toca el globo para abrir WhatsApp",
                         System.currentTimeMillis(),
-                        contact
+                        whatsapp
                 );
 
         Notification.BubbleMetadata bubble = new Notification.BubbleMetadata.Builder(
-                whatsappChat,
+                bubbleStack,
                 Icon.createWithResource(context, R.drawable.ic_bubble)
         )
                 .setDesiredHeight(640)
@@ -88,14 +99,14 @@ final class NativeBubblePublisher {
 
         Notification notification = new Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_bubble)
-                .setContentTitle(conversationName)
-                .setContentText("Chat de WhatsApp capturado como burbuja")
+                .setContentTitle("WhatsApp")
+                .setContentText("Aplicación oficial en una pila de burbuja")
                 .setContentIntent(contentIntent)
                 .setStyle(style)
                 .setCategory(Notification.CATEGORY_MESSAGE)
                 .setShortcutId(SHORTCUT_ID)
                 .setLocusId(new LocusId(SHORTCUT_ID))
-                .addPerson(contact)
+                .addPerson(whatsapp)
                 .setBubbleMetadata(bubble)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(false)
@@ -105,13 +116,37 @@ final class NativeBubblePublisher {
         notifications.notify(NOTIFICATION_ID, notification);
     }
 
+    private static Intent createHostIntent(Context context) {
+        return new Intent(context, NativeBubbleActivity.class)
+                .setAction(Intent.ACTION_VIEW)
+                .setData(Uri.parse("globowhatsapp://atomic-stack/v33"))
+                .addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK
+                                | Intent.FLAG_ACTIVITY_NEW_DOCUMENT
+                                | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+                                | Intent.FLAG_ACTIVITY_NO_ANIMATION
+                );
+    }
+
+    private static Intent createWhatsAppIntent(ComponentName component) {
+        Intent target = new Intent(Intent.ACTION_MAIN);
+        target.addCategory(Intent.CATEGORY_LAUNCHER);
+        target.setComponent(component);
+        target.setFlags(
+                Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        | Intent.FLAG_ACTIVITY_NO_ANIMATION
+        );
+        return target;
+    }
+
     private static void ensureChannel(NotificationManager notifications) {
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
-                "Chats de WhatsApp capturados",
+                "WhatsApp en globo",
                 NotificationManager.IMPORTANCE_DEFAULT
         );
-        channel.setDescription("Burbujas creadas desde el PendingIntent original de WhatsApp");
+        channel.setDescription("Abre WhatsApp mediante una pila atómica iniciada por SystemUI");
         channel.setShowBadge(true);
         channel.setSound(null, null);
         channel.enableVibration(false);
@@ -122,40 +157,54 @@ final class NativeBubblePublisher {
     private static void publishShortcut(
             Context context,
             ShortcutManager shortcuts,
-            Person contact
+            Person whatsapp
     ) {
-        Intent settingsIntent = new Intent(context, MainActivity.class)
-                .setAction(Intent.ACTION_VIEW)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
-
         ShortcutInfo shortcut = new ShortcutInfo.Builder(context, SHORTCUT_ID)
-                .setShortLabel(contact.getName())
-                .setLongLabel(contact.getName() + " en burbuja")
+                .setShortLabel("WhatsApp")
+                .setLongLabel("WhatsApp en globo")
                 .setIcon(Icon.createWithResource(context, R.drawable.ic_bubble))
                 .setCategories(Collections.singleton(CATEGORY))
                 .setActivity(new ComponentName(context, MainActivity.class))
-                .setIntent(settingsIntent)
-                .setPerson(contact)
+                .setIntent(createHostIntent(context))
+                .setPerson(whatsapp)
                 .setLongLived(true)
                 .build();
+        shortcuts.pushDynamicShortcut(shortcut);
+    }
 
+    private static void clearOldVersions(
+            NotificationManager notifications,
+            ShortcutManager shortcuts
+    ) {
+        notifications.cancel(3001);
+        notifications.cancel(3201);
+        notifications.cancel(NOTIFICATION_ID);
         shortcuts.removeDynamicShortcuts(Arrays.asList(
                 "whatsapp_native_conversation",
                 "whatsapp_native_conversation_v2",
                 "whatsapp_native_conversation_v3",
-                "whatsapp_native_conversation_v30"
+                "whatsapp_native_conversation_v30",
+                "whatsapp_captured_conversation_v32",
+                SHORTCUT_ID
         ));
-        shortcuts.pushDynamicShortcut(shortcut);
     }
 
     static void cancel(Context context) {
         NotificationManager notifications = context.getSystemService(NotificationManager.class);
-        if (notifications != null) notifications.cancel(NOTIFICATION_ID);
+        if (notifications != null) {
+            notifications.cancel(3001);
+            notifications.cancel(3201);
+            notifications.cancel(NOTIFICATION_ID);
+        }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             ShortcutManager shortcuts = context.getSystemService(ShortcutManager.class);
             if (shortcuts != null) {
-                shortcuts.removeDynamicShortcuts(Collections.singletonList(SHORTCUT_ID));
+                shortcuts.removeDynamicShortcuts(Arrays.asList(
+                        "whatsapp_native_conversation_v30",
+                        "whatsapp_captured_conversation_v32",
+                        SHORTCUT_ID
+                ));
             }
         }
     }
