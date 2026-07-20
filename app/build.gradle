@@ -10,8 +10,8 @@ android {
         applicationId 'com.leonardo.globowhatsapp.nativebubble'
         minSdk 24
         targetSdk 35
-        versionCode 32
-        versionName '3.2-notification-pending-intent'
+        versionCode 33
+        versionName '3.3-atomic-bubble-stack'
     }
 
     compileOptions {
