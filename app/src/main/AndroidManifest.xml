@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
-        <package android:name="com.openai.chatgpt" />
+        <package android:name="com.whatsapp" />
     </queries>
 
     <application
@@ -32,10 +32,10 @@
             android:documentLaunchMode="always"
             android:excludeFromRecents="true"
             android:exported="false"
-            android:label="ChatGPT"
+            android:label="WhatsApp"
             android:launchMode="standard"
             android:resizeableActivity="true"
-            android:taskAffinity="com.leonardo.burbujagpt.nativebubble"
+            android:taskAffinity="com.leonardo.globowhatsapp.nativebubble.task"
             android:theme="@style/NativeBubbleTheme" />
     </application>
 </manifest>
