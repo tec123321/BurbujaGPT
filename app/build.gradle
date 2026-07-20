@@ -7,11 +7,11 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.leonardo.burbujagpt'
+        applicationId 'com.leonardo.globowhatsapp.nativebubble'
         minSdk 24
         targetSdk 35
-        versionCode 13
-        versionName '1.3-native-app-bubble'
+        versionCode 30
+        versionName '3.0-native-no-shizuku'
     }
 
     compileOptions {
