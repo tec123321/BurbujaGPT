@@ -65,8 +65,7 @@ public class WhatsAppNotificationCaptureService extends NotificationListenerServ
     }
 
     static boolean hasCapturedNotification() {
-        PendingIntent value = latestContentIntent;
-        return value != null && !value.isCanceled();
+        return latestContentIntent != null;
     }
 
     static boolean isAccessEnabled(Context context) {
