@@ -21,15 +21,15 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** Configura una conversación Android que aloja la actividad oficial de ChatGPT. */
+/** Configura una conversación Android que aloja la actividad oficial de WhatsApp. */
 public class MainActivity extends Activity {
-    private static final int NOTIFICATION_PERMISSION_REQUEST = 1300;
-    private static final int BACKGROUND = 0xFF050505;
-    private static final int CARD = 0xFF171717;
-    private static final int BORDER = 0xFF343434;
+    private static final int NOTIFICATION_PERMISSION_REQUEST = 3000;
+    private static final int BACKGROUND = 0xFF050806;
+    private static final int CARD = 0xFF111A15;
+    private static final int BORDER = 0xFF2D4435;
     private static final int TEXT = 0xFFF5F5F5;
-    private static final int MUTED = 0xFFA3A3A3;
-    private static final int PRIMARY = 0xFF2563EB;
+    private static final int MUTED = 0xFFA3ADA7;
+    private static final int PRIMARY = 0xFF128C4A;
 
     private TextView statusView;
     private TextView diagnosticView;
@@ -62,25 +62,23 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
-        TextView orb = text("✦", 34, Color.WHITE, true);
+        TextView orb = text("☎", 34, Color.WHITE, true);
         orb.setGravity(Gravity.CENTER);
-        GradientDrawable orbBackground = new GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                new int[]{0xFF7C3AED, 0xFF0EA5E9, 0xFF10B981}
-        );
+        GradientDrawable orbBackground = new GradientDrawable();
+        orbBackground.setColor(0xFF25D366);
         orbBackground.setShape(GradientDrawable.OVAL);
         orb.setBackground(orbBackground);
         LinearLayout.LayoutParams orbParams = new LinearLayout.LayoutParams(dp(76), dp(76));
         orbParams.gravity = Gravity.CENTER_HORIZONTAL;
         root.addView(orb, orbParams);
 
-        TextView title = text("Globo GPT V13", 28, TEXT, true);
+        TextView title = text("Globo WhatsApp V3", 28, TEXT, true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams titleParams = matchWrap();
         titleParams.setMargins(0, dp(14), 0, 0);
         root.addView(title, titleParams);
 
-        TextView subtitle = text("ChatGPT oficial en una burbuja nativa", 15, MUTED, false);
+        TextView subtitle = text("WhatsApp oficial en una burbuja nativa", 15, MUTED, false);
         subtitle.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams subtitleParams = matchWrap();
         subtitleParams.setMargins(0, dp(6), 0, dp(18));
@@ -88,13 +86,13 @@ public class MainActivity extends Activity {
 
         LinearLayout explanation = card();
         explanation.addView(text(
-                "No usa WebView, Shizuku, superposición ni ventana emergente de Samsung. Publica una conversación de Android y abre la actividad de la aplicación oficial instalada dentro de la tarea de esa burbuja.",
+                "Usa el mismo contenedor de Globo GPT V13: una actividad propia permanece dentro de la burbuja y desde esa tarea inicia WhatsApp oficial sin NEW_TASK.",
                 14,
                 TEXT,
                 false
         ), matchWrap());
         TextView session = text(
-                "La sesión, Plus, historial, voz y actualizaciones siguen perteneciendo a ChatGPT oficial porque su APK y su firma no se modifican.",
+                "No usa WebView, Shizuku, accesibilidad, superposición ni modifica WhatsApp. La cuenta, chats, llamadas y actualizaciones siguen perteneciendo a la aplicación oficial.",
                 12,
                 MUTED,
                 false
@@ -141,8 +139,8 @@ public class MainActivity extends Activity {
             return;
         }
         if (!isOfficialAppInstalled()) {
-            Toast.makeText(this, "ChatGPT oficial no está instalado", Toast.LENGTH_LONG).show();
-            openChatGptStorePage();
+            Toast.makeText(this, "WhatsApp oficial no está instalado", Toast.LENGTH_LONG).show();
+            openWhatsAppStorePage();
             return;
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
@@ -185,9 +183,9 @@ public class MainActivity extends Activity {
             statusView.setTextColor(0xFFFCA5A5);
             activateButton.setEnabled(false);
         } else if (!isOfficialAppInstalled()) {
-            statusView.setText("Estado: falta instalar ChatGPT oficial");
+            statusView.setText("Estado: falta instalar WhatsApp oficial");
             statusView.setTextColor(0xFFFCA5A5);
-            activateButton.setText("Instalar ChatGPT oficial");
+            activateButton.setText("Instalar WhatsApp oficial");
             activateButton.setEnabled(true);
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
@@ -243,21 +241,21 @@ public class MainActivity extends Activity {
 
     private boolean isOfficialAppInstalled() {
         return getPackageManager().getLaunchIntentForPackage(
-                NativeBubblePublisher.CHATGPT_PACKAGE
+                NativeBubblePublisher.WHATSAPP_PACKAGE
         ) != null;
     }
 
-    private void openChatGptStorePage() {
+    private void openWhatsAppStorePage() {
         try {
             startActivity(new Intent(
                     Intent.ACTION_VIEW,
-                    Uri.parse("market://details?id=" + NativeBubblePublisher.CHATGPT_PACKAGE)
+                    Uri.parse("market://details?id=" + NativeBubblePublisher.WHATSAPP_PACKAGE)
             ));
         } catch (ActivityNotFoundException ignored) {
             startActivity(new Intent(
                     Intent.ACTION_VIEW,
                     Uri.parse("https://play.google.com/store/apps/details?id="
-                            + NativeBubblePublisher.CHATGPT_PACKAGE)
+                            + NativeBubblePublisher.WHATSAPP_PACKAGE)
             ));
         }
     }
@@ -305,7 +303,7 @@ public class MainActivity extends Activity {
         button.setGravity(Gravity.CENTER);
         button.setOnClickListener(listener);
         GradientDrawable background = new GradientDrawable();
-        background.setColor(primary ? PRIMARY : 0xFF262626);
+        background.setColor(primary ? PRIMARY : 0xFF1D2921);
         background.setCornerRadius(dp(14));
         background.setStroke(dp(1), primary ? PRIMARY : BORDER);
         button.setBackground(background);
